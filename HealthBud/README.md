@@ -16,6 +16,13 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+3. Create expo account
+
+4. Link expo account to organization (email link)
+
+5. Login to supabase (email link)
+
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
@@ -34,6 +41,20 @@ npm run reset-project
 ```
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+
+## Build on Android
+
+1. Complete the 'get started' instructions
+
+2. Run the command
+
+   ```bash
+   eas build --profile development --platform android
+   ```
+
+3. Download the APK to your android device and install, using the link/QR code from the previous command (if needed, enable "install unknown apps")
+
+4. Open the app
 
 ## Learn more
 

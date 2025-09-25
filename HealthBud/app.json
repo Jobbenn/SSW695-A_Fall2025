@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "HealthBud",
-    "slug": "HealthBud",
+    "slug": "healthbud",
+    "owner": "ssw695healthbud",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +10,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.healthbud.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +21,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.healthbud.app"
     },
     "web": {
       "output": "static",
@@ -38,11 +41,20 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "SUPABASE_URL": "https://jwgxrweofqzzeefjlrph.supabase.co",
+      "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3Z3hyd2VvZnF6emVlZmpscnBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg0NjgzNzgsImV4cCI6MjA3NDA0NDM3OH0.thtmawHssPTVmpmihuvXRYFyruXbS9Ju_9tGlsKulnI",
+      "router": {},
+      "eas": {
+        "projectId": "aa1d5332-acd7-4bb0-a951-d2d14ab5e0b9"
+      }
     }
   }
 }
