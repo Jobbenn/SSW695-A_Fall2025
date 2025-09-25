@@ -2,11 +2,7 @@ import { supabase } from './supabase';
 import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
 
-const redirectTo =
-  // Expo Go & Expo Router
-  (typeof __DEV__ !== 'undefined' && __DEV__) ? 
-    makeRedirectUri({ useProxy: true } as any) : 
-    'healthbud://auth';
+const redirectTo = 'healthbud://auth';
 
 console.log('Auth redirectTo:', redirectTo);
 
