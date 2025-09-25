@@ -42,6 +42,20 @@ npm run reset-project
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
+## Build on Android
+
+1. Complete the 'get started' instructions
+
+2. Run the command
+
+   ```bash
+   eas build --profile development --platform android
+   ```
+
+3. Download the APK to your android device and install, using the link/QR code from the previous command (if needed, enable "install unknown apps")
+
+4. Open the app
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:
