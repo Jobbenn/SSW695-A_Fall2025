@@ -3,7 +3,14 @@ import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
 
 const redirectTo = 'healthbud://auth';
-
+/*
+if testing expo go link use this instead:
+const redirectTo =
+  // Expo Go & Expo Router
+  (typeof __DEV__ !== 'undefined' && __DEV__) ? 
+    makeRedirectUri({ useProxy: true } as any) : 
+    'healthbud://auth';
+*/
 console.log('Auth redirectTo:', redirectTo);
 
 /**
