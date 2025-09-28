@@ -1,0 +1,28 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": [
+    "expo",
+    "universe/native",
+    "plugin:react/recommended",
+    "plugin:react-native/all",
+    "plugin:prettier/recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": 12,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "plugins": ["react", "react-native", "prettier"],
+  "rules": {
+    "react/prop-types": "off",
+    "react-native/no-color-literals": "warn",
+    "no-console": "warn",
+    "prettier/prettier": "error"
+  }
+}

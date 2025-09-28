@@ -1,5 +1,12 @@
 import { Image } from 'expo-image';
-import { Platform, StyleSheet, TextInput, View, Button, Alert } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  TextInput,
+  View,
+  Button,
+  Alert,
+} from 'react-native';
 import { useState } from 'react';
 
 import { HelloWave } from '@/components/hello-wave';
@@ -41,7 +48,8 @@ export default function HomeScreen() {
           source={require('@/assets/images/partial-react-logo.png')}
           style={styles.reactLogo}
         />
-      }>
+      }
+    >
       <ThemedView style={styles.titleContainer}>
         <ThemedText type="title">Welcome!</ThemedText>
         <HelloWave />
