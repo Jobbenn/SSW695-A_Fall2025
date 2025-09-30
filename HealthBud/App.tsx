@@ -40,17 +40,19 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#faedde'
+    backgroundColor: '#ffcd4e',
+    justifyContent: 'space-evenly',
   },
   logo: {
+    paddingTop: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 100,
   },
   login: {
   },
   titleText: {
     fontSize: 32,
     fontWeight: 'bold',
+    color: 'white',
   },
 });

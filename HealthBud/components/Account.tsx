@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { StyleSheet, View, Alert } from 'react-native'
-import { Button, Input } from '@rneui/themed'
+import { Button, Input } from 'react-native-elements'
 import { Session } from '@supabase/supabase-js'
+import { Ionicons } from '@expo/vector-icons';
 
 export default function Account({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true)
@@ -80,17 +81,41 @@ export default function Account({ session }: { session: Session }) {
   return (
     <View style={styles.container}>
       <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Input label="Email" value={session?.user?.email} disabled />
+        <Input 
+          label="Email" 
+          labelStyle={[styles.authInputs]}
+          leftIcon={<Ionicons name="mail-outline" size={22} color="white" />}
+          value={session?.user?.email} disabled 
+          placeholderTextColor={'white'} 
+          inputStyle={[styles.authInputs]}
+          inputContainerStyle={{ borderBottomColor: 'white' }} />
       </View>
       <View style={styles.verticallySpaced}>
-        <Input label="Username" value={username || ''} onChangeText={(text) => setUsername(text)} />
+        <Input 
+          label="Username" 
+          labelStyle={[styles.authInputs]}
+          leftIcon={<Ionicons name="person-outline" size={22} color="white" />}
+          value={username || ''} 
+          onChangeText={(text) => setUsername(text)} 
+          placeholderTextColor={'white'} 
+          inputStyle={[styles.authInputs]}
+          inputContainerStyle={{ borderBottomColor: 'white' }} />
       </View>
       <View style={styles.verticallySpaced}>
-        <Input label="Website" value={website || ''} onChangeText={(text) => setWebsite(text)} />
+        <Input 
+          label="Website" 
+          labelStyle={[styles.authInputs]}
+          leftIcon={<Ionicons name="link-outline" size={22} color="white" />}
+          value={website || ''} 
+          onChangeText={(text) => setWebsite(text)} 
+          placeholderTextColor={'white'} 
+          inputStyle={[styles.authInputs]}
+          inputContainerStyle={{ borderBottomColor: 'white' }} />
       </View>
 
       <View style={[styles.verticallySpaced, styles.mt20]}>
         <Button
+          buttonStyle={[styles.authButtons]}
           title={loading ? 'Loading ...' : 'Update'}
           onPress={() => updateProfile({ username, website, avatar_url: avatarUrl })}
           disabled={loading}
@@ -98,7 +123,10 @@ export default function Account({ session }: { session: Session }) {
       </View>
 
       <View style={styles.verticallySpaced}>
-        <Button title="Sign Out" onPress={() => supabase.auth.signOut()} />
+        <Button 
+          buttonStyle={[styles.authButtons]}
+          title="Sign Out" 
+          onPress={() => supabase.auth.signOut()} />
       </View>
     </View>
   )
@@ -106,8 +134,7 @@ export default function Account({ session }: { session: Session }) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 40,
-    padding: 12,
+    paddingHorizontal: 24,
   },
   verticallySpaced: {
     paddingTop: 4,
@@ -116,5 +143,14 @@ const styles = StyleSheet.create({
   },
   mt20: {
     marginTop: 20,
+  },
+  authButtons: {
+    backgroundColor: '#ffcd4e',
+    borderWidth: 1,
+    borderColor: 'white',
+    borderRadius: 20,
+  },
+  authInputs: {
+    color: 'white',
   },
 })

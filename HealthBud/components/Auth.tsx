@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Alert, StyleSheet, View, AppState } from 'react-native'
 import { supabase } from '../lib/supabase'
-import { Button, Input } from '@rneui/themed'
+import { Button, Input } from 'react-native-elements'
+import { Ionicons } from '@expo/vector-icons';
 
 // Tells Supabase Auth to continuously refresh the session automatically if
 // the app is in the foreground. When this is added, you will continue to receive
@@ -51,29 +52,37 @@ export default function Auth() {
       <View style={[styles.verticallySpaced, styles.mt20]}>
         <Input
           label="Email"
-          leftIcon={{ type: 'font-awesome', name: 'envelope' }}
+          labelStyle={[styles.authInputs]}
+          leftIcon={<Ionicons name="mail-outline" size={22} color="white" />}
           onChangeText={(text) => setEmail(text)}
           value={email}
           placeholder="email@address.com"
+          placeholderTextColor={'white'}
           autoCapitalize={'none'}
+          inputStyle={[styles.authInputs]}
+          inputContainerStyle={{ borderBottomColor: 'white' }} 
         />
       </View>
       <View style={styles.verticallySpaced}>
         <Input
           label="Password"
-          leftIcon={{ type: 'font-awesome', name: 'lock' }}
+          labelStyle={[styles.authInputs]}
+          leftIcon={<Ionicons name="lock-closed-outline" size={22} color="white" />}
           onChangeText={(text) => setPassword(text)}
           value={password}
           secureTextEntry={true}
           placeholder="Password"
+          placeholderTextColor={'white'}
           autoCapitalize={'none'}
+          inputStyle={[styles.authInputs]}
+          inputContainerStyle={{ borderBottomColor: 'white' }} 
         />
       </View>
       <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Button title="Sign in" disabled={loading} onPress={() => signInWithEmail()} />
+        <Button buttonStyle={[styles.authButtons]} title="Sign in" disabled={loading} onPress={() => signInWithEmail()} />
       </View>
       <View style={styles.verticallySpaced}>
-        <Button title="Sign up" disabled={loading} onPress={() => signUpWithEmail()} />
+        <Button buttonStyle={[styles.authButtons]} title="Sign up" disabled={loading} onPress={() => signUpWithEmail()} />
       </View>
     </View>
   )
@@ -81,8 +90,7 @@ export default function Auth() {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 40,
-    padding: 12,
+    paddingHorizontal: 24,
   },
   verticallySpaced: {
     paddingTop: 4,
@@ -92,4 +100,13 @@ const styles = StyleSheet.create({
   mt20: {
     marginTop: 20,
   },
+  authButtons: {
+    backgroundColor: '#ffcd4e',
+    borderWidth: 1,
+    borderColor: 'white',
+    borderRadius: 20,
+  },
+  authInputs: {
+    color: 'white',
+  }
 })
