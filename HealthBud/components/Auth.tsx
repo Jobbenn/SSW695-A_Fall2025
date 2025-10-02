@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { Alert, StyleSheet, View, AppState } from 'react-native'
+import { Alert, StyleSheet, View, AppState, useColorScheme } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { Button, Input } from 'react-native-elements'
 import { Ionicons } from '@expo/vector-icons';
+import { Colors } from '../constants/theme';
 
 // Tells Supabase Auth to continuously refresh the session automatically if
 // the app is in the foreground. When this is added, you will continue to receive
@@ -20,6 +21,8 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const colorScheme = useColorScheme(); // "light" or "dark"
+  const theme = Colors[colorScheme ?? 'light'];
 
   async function signInWithEmail() {
     setLoading(true)
@@ -52,37 +55,37 @@ export default function Auth() {
       <View style={[styles.verticallySpaced, styles.mt20]}>
         <Input
           label="Email"
-          labelStyle={[styles.authInputs]}
-          leftIcon={<Ionicons name="mail-outline" size={22} color="white" />}
+          labelStyle={{ color: theme.secondary }}
+          leftIcon={<Ionicons name="mail-outline" size={22} color={theme.secondary} />}
           onChangeText={(text) => setEmail(text)}
           value={email}
           placeholder="email@address.com"
-          placeholderTextColor={'white'}
+          placeholderTextColor={theme.secondary}
           autoCapitalize={'none'}
-          inputStyle={[styles.authInputs]}
-          inputContainerStyle={{ borderBottomColor: 'white' }} 
+          inputStyle={{ color: theme.secondary }}
+          inputContainerStyle={{ borderBottomColor: theme.secondary }} 
         />
       </View>
       <View style={styles.verticallySpaced}>
         <Input
           label="Password"
-          labelStyle={[styles.authInputs]}
-          leftIcon={<Ionicons name="lock-closed-outline" size={22} color="white" />}
+          labelStyle={{ color: theme.secondary }}
+          leftIcon={<Ionicons name="lock-closed-outline" size={22} color={theme.secondary} />}
           onChangeText={(text) => setPassword(text)}
           value={password}
           secureTextEntry={true}
           placeholder="Password"
-          placeholderTextColor={'white'}
+          placeholderTextColor={theme.secondary}
           autoCapitalize={'none'}
-          inputStyle={[styles.authInputs]}
-          inputContainerStyle={{ borderBottomColor: 'white' }} 
+          inputStyle={{ color: theme.secondary }}
+          inputContainerStyle={{ borderBottomColor: theme.secondary }} 
         />
       </View>
       <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Button buttonStyle={[styles.authButtons]} title="Sign in" disabled={loading} onPress={() => signInWithEmail()} />
+        <Button buttonStyle={[styles.authButtons,{ backgroundColor: theme.primary, borderColor: theme.secondary }]} title="Sign in" disabled={loading} onPress={() => signInWithEmail()} />
       </View>
       <View style={styles.verticallySpaced}>
-        <Button buttonStyle={[styles.authButtons]} title="Sign up" disabled={loading} onPress={() => signUpWithEmail()} />
+        <Button buttonStyle={[styles.authButtons,{ backgroundColor: theme.primary, borderColor: theme.secondary }]} title="Sign up" disabled={loading} onPress={() => signUpWithEmail()} />
       </View>
     </View>
   )
@@ -91,6 +94,7 @@ export default function Auth() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
+    marginTop: 0,
   },
   verticallySpaced: {
     paddingTop: 4,
@@ -101,12 +105,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   authButtons: {
-    backgroundColor: '#ffcd4e',
     borderWidth: 1,
-    borderColor: 'white',
     borderRadius: 20,
-  },
-  authInputs: {
-    color: 'white',
   }
 })

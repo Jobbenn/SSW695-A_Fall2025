@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { StyleSheet, View, Alert, Image, Button } from 'react-native'
+import { StyleSheet, View, Alert, Image, Button, useColorScheme } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import { Colors } from '../constants/theme';
 
 interface Props {
   size: number
@@ -13,7 +14,9 @@ export default function Avatar({ url, size = 150, onUpload }: Props) {
   const [uploading, setUploading] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const avatarSize = { height: size, width: size }
-
+  const colorScheme = useColorScheme();
+  const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
+  
   useEffect(() => {
     if (url) downloadImage(url)
   }, [url])
@@ -97,7 +100,7 @@ export default function Avatar({ url, size = 150, onUpload }: Props) {
           style={[avatarSize, styles.avatar, styles.image]}
         />
       ) : (
-        <View style={[avatarSize, styles.avatar, styles.noImage]} />
+        <View style={[avatarSize, styles.avatar, styles.noImage, {backgroundColor: theme.text, borderColor: theme.muted}]} />
       )}
       <View>
         <Button
@@ -121,10 +124,8 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   noImage: {
-    backgroundColor: '#333',
     borderWidth: 1,
     borderStyle: 'solid',
-    borderColor: 'rgb(200, 200, 200)',
     borderRadius: 5,
   },
 })

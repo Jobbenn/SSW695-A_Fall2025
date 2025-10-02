@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { StyleSheet, View, Alert } from 'react-native'
+import { StyleSheet, View, Alert, useColorScheme } from 'react-native'
 import { Button, Input } from 'react-native-elements'
 import { Session } from '@supabase/supabase-js'
 import { Ionicons } from '@expo/vector-icons';
+import SafeScreen from './SafeScreen';
+import { Colors } from '../constants/theme';
 
 export default function Account({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true)
   const [username, setUsername] = useState('')
   const [website, setWebsite] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+  const colorScheme = useColorScheme(); // "light" or "dark"
+  const theme = Colors[colorScheme ?? 'light'];
 
   useEffect(() => {
     if (session) getProfile()
@@ -79,62 +83,66 @@ export default function Account({ session }: { session: Session }) {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Input 
-          label="Email" 
-          labelStyle={[styles.authInputs]}
-          leftIcon={<Ionicons name="mail-outline" size={22} color="white" />}
-          value={session?.user?.email} disabled 
-          placeholderTextColor={'white'} 
-          inputStyle={[styles.authInputs]}
-          inputContainerStyle={{ borderBottomColor: 'white' }} />
-      </View>
-      <View style={styles.verticallySpaced}>
-        <Input 
-          label="Username" 
-          labelStyle={[styles.authInputs]}
-          leftIcon={<Ionicons name="person-outline" size={22} color="white" />}
-          value={username || ''} 
-          onChangeText={(text) => setUsername(text)} 
-          placeholderTextColor={'white'} 
-          inputStyle={[styles.authInputs]}
-          inputContainerStyle={{ borderBottomColor: 'white' }} />
-      </View>
-      <View style={styles.verticallySpaced}>
-        <Input 
-          label="Website" 
-          labelStyle={[styles.authInputs]}
-          leftIcon={<Ionicons name="link-outline" size={22} color="white" />}
-          value={website || ''} 
-          onChangeText={(text) => setWebsite(text)} 
-          placeholderTextColor={'white'} 
-          inputStyle={[styles.authInputs]}
-          inputContainerStyle={{ borderBottomColor: 'white' }} />
-      </View>
+    <SafeScreen>
+      <View style={styles.container}>
+        <View style={[styles.verticallySpaced, styles.mt20]}>
+          <Input 
+            label="Email" 
+            labelStyle={{ color: theme.text }}
+            leftIcon={<Ionicons name="mail-outline" size={22} color={theme.text} />}
+            value={session?.user?.email} disabled
+            placeholderTextColor={theme.text}
+            inputStyle={{ color: theme.text }}
+            inputContainerStyle={{ borderBottomColor: theme.text }} />
+        </View>
+        <View style={styles.verticallySpaced}>
+          <Input 
+            label="Username" 
+            labelStyle={{ color: theme.text }}
+            leftIcon={<Ionicons name="person-outline" size={22} color={theme.text} />}
+            value={username || ''} 
+            onChangeText={(text) => setUsername(text)} 
+            placeholderTextColor={theme.text} 
+            inputStyle={{ color: theme.text }}
+            inputContainerStyle={{ borderBottomColor: theme.text }} />
+        </View>
+        <View style={styles.verticallySpaced}>
+          <Input 
+            label="Website" 
+            labelStyle={{ color: theme.text }}
+            leftIcon={<Ionicons name="link-outline" size={22} color={theme.text} />}
+            value={website || ''} 
+            onChangeText={(text) => setWebsite(text)} 
+            placeholderTextColor={theme.text} 
+            inputStyle={{ color: theme.text }}
+            inputContainerStyle={{ borderBottomColor: theme.text }} />
+        </View>
 
-      <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Button
-          buttonStyle={[styles.authButtons]}
-          title={loading ? 'Loading ...' : 'Update'}
-          onPress={() => updateProfile({ username, website, avatar_url: avatarUrl })}
-          disabled={loading}
-        />
-      </View>
+        <View style={[styles.verticallySpaced, styles.mt20]}>
+          <Button
+            buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
+            title={loading ? 'Loading ...' : 'Update'}
+            titleStyle={[{ color: theme.text }]}
+            onPress={() => updateProfile({ username, website, avatar_url: avatarUrl })}
+            disabled={loading}
+          />
+        </View>
 
-      <View style={styles.verticallySpaced}>
-        <Button 
-          buttonStyle={[styles.authButtons]}
-          title="Sign Out" 
-          onPress={() => supabase.auth.signOut()} />
+        <View style={styles.verticallySpaced}>
+          <Button 
+            buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
+            title="Sign Out" 
+            titleStyle={[{ color: theme.text }]}
+            onPress={() => supabase.auth.signOut()} />
+        </View>
       </View>
-    </View>
+    </SafeScreen>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 12,
   },
   verticallySpaced: {
     paddingTop: 4,
@@ -145,12 +153,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   authButtons: {
-    backgroundColor: '#ffcd4e',
     borderWidth: 1,
-    borderColor: 'white',
     borderRadius: 20,
-  },
-  authInputs: {
-    color: 'white',
-  },
+  }
 })
