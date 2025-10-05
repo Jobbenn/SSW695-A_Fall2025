@@ -1,31 +1,29 @@
 name: Lint and Format Check
 
-# 觸發條件：每次推送或 Pull Request 到 main 分支
 on:
   push:
-    branches: [ main ]
+    branches: [ main, james/autotest ]  # 包括你的分支
   pull_request:
-    branches: [ main ]
+    branches: [ main ]  # PR 目標為 main
 
 jobs:
   lint:
-    runs-on: ubuntu-latest  # 使用 Linux 環境（相容 Expo）
-
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: HealthBud  # 指定 HealthBud 目錄
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4  # 拉取最新程式碼
-
+      uses: actions/checkout@v4
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'  # 使用 Node 20（Expo 54 相容）
-        cache: 'npm'  # 快取 node_modules
-
+        node-version: '20'  # Node 20，與 Expo 54 相容
+        cache: 'npm'
+        cache-dependency-path: HealthBud/package-lock.json
     - name: Install dependencies
-      run: npm ci  # 使用 ci 來安裝乾淨的依賴（比 install 更嚴格）
-
+      run: npm ci
     - name: Run Prettier check
-      run: npm run format -- --check  # 檢查格式化（不修復，只驗證）
-
+      run: npm run format -- --check
     - name: Run ESLint
-      run: npm run lint  # 運行 ESLint 檢查（expo lint 或 eslint .）
+      run: npm run lint
