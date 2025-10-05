@@ -1,0 +1,8 @@
+# 確保所有程式碼和配置檔案使用 LF 換行符
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf
