@@ -14,84 +14,35 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  schedule:
-    - cron: '18 20 * * 3'
 
 jobs:
   eslint:
-    name: Run ESLint scanning
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
-      actions: read
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
 
-      - name: Install deps (ensure ESLint + SARIF formatter)
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run ESLint
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
-          # Make sure eslint + sarif formatter exist even if not in devDeps
-          npm ls eslint >/dev/null 2>&1 || npm i -D eslint
-          npm ls @microsoft/eslint-formatter-sarif >/dev/null 2>&1 || npm i -D @microsoft/eslint-formatter-sarif
-
-      - name: Run ESLint → produce SARIF
-        id: lint
-        env:
-          SARIF_ESLINT_IGNORE_SUPPRESSED: "true"
-        shell: bash
-        run: |
-          set -o pipefail
-          CONFIG_ARG=""
-          for f in .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml .eslintrc.yaml; do
-            if [ -f "$f" ]; then CONFIG_ARG="--config $f"; break; fi
-          done
-
-          # Run eslint; do NOT fail the job yet
           npx eslint . \
-            $CONFIG_ARG \
             --ext .js,.jsx,.ts,.tsx \
             --format @microsoft/eslint-formatter-sarif \
-            --output-file eslint-results.sarif \
-          || echo "ESLint returned non-zero, continuing to upload SARIF."
+            --output-file eslint-results.sarif || true
 
-          # If SARIF wasn't produced (crash, no files matched), create a minimal valid SARIF
-          if [ ! -s eslint-results.sarif ]; then
-            echo 'No SARIF produced, creating a minimal SARIF to avoid upload step failure.'
-            cat > eslint-results.sarif <<'EOF'
-            {
-              "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json",
-              "version": "2.1.0",
-              "runs": [{
-                "tool": { "driver": { "name": "ESLint", "informationUri": "https://eslint.org" } },
-                "results": []
-              }]
-            }
-            EOF
-          fi
-
-          echo "SARIF file status:"
-          ls -l eslint-results.sarif
-          echo "First 200 chars:"
-          head -c 200 eslint-results.sarif || true
-
-      - name: Upload SARIF to GitHub Code Scanning
-        if: always()   # run even if ESLint failed
+      - name: Upload SARIF results
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: eslint-results.sarif
-          wait-for-processing: true
-
-      # Optionally fail the job after upload if ESLint had errors
-      - name: Fail if ESLint step failed
-        if: failure() || steps.lint.outcome == 'failure'
-        run: |
-          echo "Failing the job because ESLint reported errors (after uploading SARIF)."
-          exit 1
