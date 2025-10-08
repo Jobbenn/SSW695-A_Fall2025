@@ -22,35 +22,33 @@ jobs:
   eslint:
     name: Run eslint scanning
     runs-on: ubuntu-latest
+    
     permissions:
       contents: read
       security-events: write
-      actions: read # Only required for private repositories with github/codeql-action/upload-sarif
+      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20' # Specify a recommended Node.js version
+
 
       - name: Install ESLint
-        # This assumes ESLint and the formatter are defined as devDependencies in your package.json
+
         run: |
-          npm install
+          npm install eslint@8.10.0
+          npm install @microsoft/eslint-formatter-sarif@3.1.0
 
       - name: Run ESLint
         env:
           SARIF_ESLINT_IGNORE_SUPPRESSED: "true"
-        # The command should be 'npx eslint' to ensure the correct local version is used.
-        # It's better to use your package.json scripts if possible (e.g., `npm run lint`).
-        run: |
-          npx eslint . \
-            --config .eslintrc.js \
-            --ext .js,.jsx,.ts,.tsx \
-            --format @microsoft/eslint-formatter-sarif \
-            --output-file eslint-results.sarif
+        run: npx eslint .
+          --config .eslintrc.js
+          --ext .js,.jsx,.ts,.tsx
+          --format @microsoft/eslint-formatter-sarif
+          --output-file eslint-results.sarif
+
+
         continue-on-error: true
 
       - name: Upload analysis results to GitHub
