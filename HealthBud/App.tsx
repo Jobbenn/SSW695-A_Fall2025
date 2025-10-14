@@ -16,14 +16,17 @@ export default function App() {
   const theme = Colors[colorScheme ?? 'light'];
 
   useEffect(() => {
+    
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+
     supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+    
   }, []);
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       {session && session.user ? ( //when signed in (session exists)
-        <Navigation session={session} />
+        <Account key={session.user.id} session={session} />
       ) : ( //when signed out (no session)
         <View style={[styles.container, {backgroundColor: theme.primary}]}> 
           <View style={styles.logo}>
