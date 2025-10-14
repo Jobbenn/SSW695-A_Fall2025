@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { StyleSheet, View, Alert, Image, Button, useColorScheme } from 'react-native'
+import { StyleSheet, View, Alert, Image, useColorScheme } from 'react-native'
+import { Button } from '@rneui/themed'
 import * as ImagePicker from 'expo-image-picker'
 import { Colors } from '../constants/theme';
 
@@ -104,6 +105,7 @@ export default function Avatar({ url, size = 150, onUpload }: Props) {
       )}
       <View>
         <Button
+          buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
           title={uploading ? 'Uploading ...' : 'Upload'}
           onPress={uploadAvatar}
           disabled={uploading}
@@ -127,5 +129,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'solid',
     borderRadius: 5,
+  },
+  authButtons: {
+    borderWidth: 1,
+    borderRadius: 20,
   },
 })
