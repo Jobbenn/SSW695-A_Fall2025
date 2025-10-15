@@ -26,7 +26,7 @@ export default function App() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       {session && session.user ? ( //when signed in (session exists)
-        <Account key={session.user.id} session={session} />
+        <Navigation session={session} />
       ) : ( //when signed out (no session)
         <View style={[styles.container, {backgroundColor: theme.primary}]}> 
           <View style={styles.logo}>

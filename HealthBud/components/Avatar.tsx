@@ -103,10 +103,11 @@ export default function Avatar({ url, size = 150, onUpload }: Props) {
       ) : (
         <View style={[avatarSize, styles.avatar, styles.noImage, {backgroundColor: theme.text, borderColor: theme.muted}]} />
       )}
-      <View>
+      <View style={styles.verticallySpaced}>
         <Button
           buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
           title={uploading ? 'Uploading ...' : 'Upload'}
+          titleStyle={[{ color: theme.text }]}
           onPress={uploadAvatar}
           disabled={uploading}
         />
@@ -129,6 +130,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'solid',
     borderRadius: 5,
+  },
+  verticallySpaced: {
+    paddingTop: 20,
+    paddingBottom: 4,
+    alignSelf: 'stretch',
   },
   authButtons: {
     borderWidth: 1,

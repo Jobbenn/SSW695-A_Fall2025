@@ -86,7 +86,7 @@ export default function Account({ session }: { session: Session }) {
   return (
     <SafeScreen>
       <View>
-        <View style={[styles.verticallySpaced, styles.mt20, styles.horizontallyCentered]}>
+        <View style={[styles.verticallySpaced, styles.mt30, styles.horizontallyCentered]}>
           <Avatar 
             size={200} 
             url={avatarUrl} 
