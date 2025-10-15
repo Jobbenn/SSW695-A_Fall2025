@@ -6,6 +6,7 @@ import { Session } from '@supabase/supabase-js'
 import { Ionicons } from '@expo/vector-icons';
 import SafeScreen from './SafeScreen';
 import { Colors } from '../constants/theme';
+import Avatar from '../components/Avatar'
 
 export default function Account({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true)
@@ -84,8 +85,18 @@ export default function Account({ session }: { session: Session }) {
 
   return (
     <SafeScreen>
-      <View style={styles.container}>
-        <View style={[styles.verticallySpaced, styles.mt20]}>
+      <View>
+        <View style={[styles.verticallySpaced, styles.mt30, styles.horizontallyCentered]}>
+          <Avatar 
+            size={200} 
+            url={avatarUrl} 
+            onUpload={(url: string) => { 
+              setAvatarUrl(url) 
+              updateProfile({ username, website, avatar_url: url })
+              }}
+            />
+        </View>
+        <View style={[styles.verticallySpaced, styles.mt30]}>
           <Input 
             label="Email" 
             labelStyle={{ color: theme.text }}
@@ -106,18 +117,6 @@ export default function Account({ session }: { session: Session }) {
             inputStyle={{ color: theme.text }}
             inputContainerStyle={{ borderBottomColor: theme.text }} />
         </View>
-        <View style={styles.verticallySpaced}>
-          <Input 
-            label="Website" 
-            labelStyle={{ color: theme.text }}
-            leftIcon={<Ionicons name="link-outline" size={22} color={theme.text} />}
-            value={website || ''} 
-            onChangeText={(text) => setWebsite(text)} 
-            placeholderTextColor={theme.text} 
-            inputStyle={{ color: theme.text }}
-            inputContainerStyle={{ borderBottomColor: theme.text }} />
-        </View>
-
         <View style={[styles.verticallySpaced, styles.mt20]}>
           <Button
             buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
@@ -127,7 +126,6 @@ export default function Account({ session }: { session: Session }) {
             disabled={loading}
           />
         </View>
-
         <View style={styles.verticallySpaced}>
           <Button 
             buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
@@ -149,8 +147,14 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     alignSelf: 'stretch',
   },
+  horizontallyCentered: {
+    alignSelf: 'center'
+  },
   mt20: {
     marginTop: 20,
+  },
+  mt30: {
+    marginTop: 30,
   },
   authButtons: {
     borderWidth: 1,
