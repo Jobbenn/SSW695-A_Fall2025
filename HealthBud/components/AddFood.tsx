@@ -75,6 +75,14 @@ export default function AddFood() {
   const isLoading = tab === 'recent' ? loadingRecent : loadingAll;
   const err = tab === 'recent' ? errorRecent : errorAll;
 
+  type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+  function sanitizeMeal(input: any): Meal | undefined {
+    if (typeof input !== 'string') return undefined;
+    const v = input.toLowerCase().trim();
+    return (v === 'breakfast' || v === 'lunch' || v === 'dinner' || v === 'snack') ? (v as Meal) : undefined;
+  }
+
   // From "Recent": pass food AND last used serving details
   const onSelectRecent = useCallback(
     (rf: RecentFood) => {
@@ -84,7 +92,7 @@ export default function AddFood() {
         prefillFood: rf.food,
         prefillServingSize: rf.lastServingSize ?? undefined,
         prefillServings: rf.lastServings ?? undefined,
-        prefillMeal: rf.lastMeal ?? undefined,
+        prefillMeal: sanitizeMeal(rf.lastMeal),
       });
     },
     [navigation, dateISO, userId]
@@ -107,7 +115,7 @@ export default function AddFood() {
         prefillFood: food,
         prefillServingSize: last?.serving_size ?? undefined,
         prefillServings: last?.servings ?? undefined,
-        prefillMeal: (last?.meal as any) ?? undefined,
+        prefillMeal: sanitizeMeal(last?.meal),
       });
     },
     [navigation, dateISO, userId]

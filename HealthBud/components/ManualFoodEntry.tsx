@@ -318,9 +318,9 @@ export default function ManualFoodEntry() {
       brand: prefillFood.brand ?? '',
       calories: prefillFood.calories != null ? String(prefillFood.calories) : '',
 
-      serving_size: prefillServingSize ?? prev.serving_size,
-      servings: prefillServings != null ? String(prefillServings) : prev.servings,
-      meal: prefillMeal ?? prev.meal,
+      serving_size: prefillServingSize !== undefined ? (prefillServingSize ?? '') : prev.serving_size,
+      servings: prefillServings !== undefined ? String(prefillServings ?? '') : prev.servings,
+      meal: prefillMeal !== undefined ? prefillMeal : prev.meal,
 
       total_carbs: prefillFood.total_carbs != null ? String(prefillFood.total_carbs) : '',
       fiber: prefillFood.fiber != null ? String(prefillFood.fiber) : '',
@@ -398,6 +398,13 @@ export default function ManualFoodEntry() {
     return true;
   };
 
+  type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack'; // keep your existing type if already declared
+
+  function sanitizeMeal(input: any): Meal {
+    const v = typeof input === 'string' ? input.toLowerCase().trim() : '';
+    return (v === 'breakfast' || v === 'lunch' || v === 'dinner' || v === 'snack') ? (v as Meal) : 'breakfast';
+  }
+
   const onSave = useCallback(async () => {
     // Common validation
     const missing: string[] = [];
@@ -430,6 +437,8 @@ export default function ManualFoodEntry() {
     if (submitting) return;
     setSubmitting(true);
 
+    const mealToUse = sanitizeMeal(form.meal);
+
     try {
       // Build the food payload
       const foodPayload: NewFood = {
@@ -437,51 +446,51 @@ export default function ManualFoodEntry() {
         brand: form.brand.trim() || null,
         calories: cal,
 
-        total_carbs: toNumberOrNull(form.total_carbs),
-        fiber: toNumberOrNull(form.fiber),
-        sugar: toNumberOrNull(form.sugar),
-        added_sugar: toNumberOrNull(form.added_sugar),
+        total_carbs: Number(form.total_carbs),
+        fiber: Number(form.fiber),
+        sugar: Number(form.sugar),
+        added_sugar: Number(form.added_sugar) || 0,
 
-        total_fats: toNumberOrNull(form.total_fats),
-        omega_3: toNumberOrNull(form.omega_3),
-        omega_6: toNumberOrNull(form.omega_6),
-        saturated_fats: toNumberOrNull(form.saturated_fats),
-        trans_fats: toNumberOrNull(form.trans_fats),
+        total_fats: Number(form.total_fats) || 0,
+        omega_3: Number(form.omega_3) || 0,
+        omega_6: Number(form.omega_6) || 0,
+        saturated_fats: Number(form.saturated_fats) || 0,
+        trans_fats: Number(form.trans_fats) || 0,
 
-        protein: toNumberOrNull(form.protein),
+        protein: Number(form.protein) || 0,
 
-        vitamin_a: toNumberOrNull(form.vitamin_a),
-        vitamin_b6: toNumberOrNull(form.vitamin_b6),
-        vitamin_b12: toNumberOrNull(form.vitamin_b12),
-        vitamin_c: toNumberOrNull(form.vitamin_c),
-        vitamin_d: toNumberOrNull(form.vitamin_d),
-        vitamin_e: toNumberOrNull(form.vitamin_e),
-        vitamin_k: toNumberOrNull(form.vitamin_k),
+        vitamin_a: Number(form.vitamin_a) || 0,
+        vitamin_b6: Number(form.vitamin_b6) || 0,
+        vitamin_b12: Number(form.vitamin_b12) || 0,
+        vitamin_c: Number(form.vitamin_c) || 0,
+        vitamin_d: Number(form.vitamin_d) || 0,
+        vitamin_e: Number(form.vitamin_e) || 0,
+        vitamin_k: Number(form.vitamin_k) || 0,
 
-        thiamin: toNumberOrNull(form.thiamin),
-        riboflavin: toNumberOrNull(form.riboflavin),
-        niacin: toNumberOrNull(form.niacin),
-        folate: toNumberOrNull(form.folate),
-        pantothenic_acid: toNumberOrNull(form.pantothenic_acid),
-        biotin: toNumberOrNull(form.biotin),
-        choline: toNumberOrNull(form.choline),
+        thiamin: Number(form.thiamin) || 0,
+        riboflavin: Number(form.riboflavin) || 0,
+        niacin: Number(form.niacin) || 0,
+        folate: Number(form.folate) || 0,
+        pantothenic_acid: Number(form.pantothenic_acid) || 0,
+        biotin: Number(form.biotin) || 0,
+        choline: Number(form.choline) || 0,
 
-        calcium: toNumberOrNull(form.calcium),
-        chromium: toNumberOrNull(form.chromium),
-        copper: toNumberOrNull(form.copper),
-        fluoride: toNumberOrNull(form.fluoride),
-        iodine: toNumberOrNull(form.iodine),
-        iron: toNumberOrNull(form.iron),
-        magnesium: toNumberOrNull(form.magnesium),
-        manganese: toNumberOrNull(form.manganese),
-        molybdenum: toNumberOrNull(form.molybdenum),
-        phosphorus: toNumberOrNull(form.phosphorus),
-        selenium: toNumberOrNull(form.selenium),
-        zinc: toNumberOrNull(form.zinc),
+        calcium: Number(form.calcium) || 0,
+        chromium: Number(form.chromium) || 0,
+        copper: Number(form.copper) || 0,
+        fluoride: Number(form.fluoride) || 0,
+        iodine: Number(form.iodine) || 0,
+        iron: Number(form.iron) || 0,
+        magnesium: Number(form.magnesium) || 0,
+        manganese: Number(form.manganese) || 0,
+        molybdenum: Number(form.molybdenum) || 0,
+        phosphorus: Number(form.phosphorus) || 0,
+        selenium: Number(form.selenium) || 0,
+        zinc: Number(form.zinc) || 0,
 
-        potassium: toNumberOrNull(form.potassium),
-        sodium: toNumberOrNull(form.sodium),
-        chloride: toNumberOrNull(form.chloride),
+        potassium: Number(form.potassium) || 0,
+        sodium: Number(form.sodium) || 0,
+        chloride: Number(form.chloride) || 0,
       };
 
       if (editItem) {
@@ -489,7 +498,7 @@ export default function ManualFoodEntry() {
         await editFood(editItem.food_id, foodPayload as Partial<NewFood>);
         await editFoodItem(editItem.id, {
           eaten_at: dateISO,
-          meal: form.meal,
+          meal: mealToUse,
           serving_size: form.serving_size.trim() || null,
           servings: servingsNum,
         });
@@ -514,7 +523,7 @@ export default function ManualFoodEntry() {
       const newFoodItem: Omit<NewFoodItem, 'user_id'> = {
         food_id: foodIdToUse!,
         eaten_at: dateISO,
-        meal: form.meal,
+        meal: mealToUse,
         serving_size: form.serving_size.trim() || null,
         servings: servingsNum,
       };

@@ -209,5 +209,19 @@ export async function getLastUsageForFood(
     .maybeSingle();
 
   if (error) throw error;
-  return data ?? null;
+
+  if (!data) return null;
+
+  // Normalize meal defensively
+  const rawMeal = (data as any).meal;
+  const meal =
+    typeof rawMeal === 'string'
+      ? (rawMeal.toLowerCase().trim() as Meal)
+      : (rawMeal as Meal | null);
+
+  return {
+    serving_size: (data as any).serving_size ?? null,
+    servings: (data as any).servings ?? null,
+    meal: meal ?? null,
+  };
 }
