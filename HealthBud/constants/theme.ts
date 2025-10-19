@@ -5,7 +5,7 @@ export const Colors = {
     soft: '#faf2dcff', // softer variant of primary for backgrounds
     secondary: '#ffffff', // secondary app color (contrast with primary), menu color after login
     background: '#fafafaff', // background color on most screens
-    card: "#f3e9d3ff",
+    card: "#e8e5deff",
     text: '#555', // text, border, and line color
     border: '#555', 
     muted: '#888', // disabled elements, placeholder text
@@ -15,7 +15,7 @@ export const Colors = {
     soft: '#faf2dcff', // softer variant of primary for backgrounds
     secondary: '#222222', // secondary app color (contrast with primary), menu color after login
     background: '#000000', // background color on most screens
-    card: "#f3e9d3ff",
+    card: "#e8e5deff",
     text: '#ffffff', // text, border, and line color
     border: '#555', 
     muted: '#aaaaaa', // disabled elements, placeholder text
