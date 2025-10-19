@@ -1,0 +1,35 @@
+## 1️⃣ `New_Auth.test.tsx` (Core functionality tests)
+
+| Feature | Test Behavior                               | Positive Boundary                                                                                                                       | Negative Boundary                                                              |
+| ------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Sign in | Enter valid email/password, press `Sign in` | Correct email & password → should call `signInWithPassword`                                                                             | Empty email or password → should trigger an alert asking to fill in the fields |
+| Sign up | Enter valid email/password, press `Sign up` | Valid email & strong password → should call `signUp`; if session is null → show alert “Please check your inbox for email verification!” | Empty email or password → should trigger an alert asking to fill in the fields |
+
+**Explanation:**
+
+* Positive boundary: testing normal usage that meets API requirements.
+* Negative boundary: testing missing input or invalid input, ensuring the component handles errors correctly.
+
+---
+
+## 2️⃣ `New_Auth_Extra.test.tsx` (Edge and abnormal behavior tests)
+
+| Feature                     | Test Behavior                                                | Positive Boundary                                                        | Negative Boundary                                                                                               |
+| --------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Sign up input validation    | Enter invalid email format or weak password, press `Sign up` | Correct email format & strong password → success, alert for verification | Invalid email (`invalid-email`) or weak password → show alert “Please check your inbox for email verification!” |
+| Prevent duplicate API calls | Rapidly click `Sign in` multiple times                       | Single click → API called once                                           | Rapid multiple clicks → API still only called once, preventing duplicate requests                               |
+
+**Explanation:**
+
+* Positive boundary: valid input and normal user operation.
+* Negative boundary: invalid input or abnormal operation (rapid clicks, multiple submissions), testing component robustness and error handling.
+
+---
+
+### 🔑 Summary
+
+* **Core tests (`New_Auth`)** → Verify correctness, API calls, and alert messages.
+* **Extra tests (`New_Auth_Extra`)** → Test component’s handling of invalid input and edge cases.
+* **Positive boundary** → Valid user input and normal operations.
+* **Negative boundary** → Invalid input, abnormal user operations, or edge conditions.
+
