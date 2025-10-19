@@ -1,5 +1,5 @@
 // lib/foodTypes.ts
-export type Meal = 'breakfast' | 'lunch' | 'dinner';
+export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 export type Food = {
   id: string;

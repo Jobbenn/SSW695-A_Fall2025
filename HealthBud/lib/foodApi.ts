@@ -105,36 +105,109 @@ export async function deleteFoodItem(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/**
- * Convenience: join with food to show display data for diary screens.
- */
-export type JoinedFoodItem = FoodItem & {
-  food_name: string;
-  food_brand: string | null;
-  calories: number;
-  protein: number | null;
-  total_carbs: number | null;
-  total_fats: number | null;
-};
+export type JoinedFoodItem = FoodItem & { food: Food | null };
 
-export async function getJoinedFoodItems(userId: string, opts?: {
-  dateFrom?: string;
-  dateTo?: string;
-  meal?: Meal;
-} & PageOpts): Promise<JoinedFoodItem[]> {
-  let req = supabase.from('v_user_food_items').select('*').eq('user_id', userId);
+export async function getJoinedFoodItems(
+  userId: string,
+  opts?: { dateFrom?: string; dateTo?: string; limit?: number; meal?: Meal; from?: number; to?: number }
+): Promise<JoinedFoodItem[]> {
+  let req = supabase
+    .from('user_food_items')
+    .select(`
+      id, user_id, food_id, eaten_at, meal, serving_size, servings, created_at, updated_at,
+      food:foods (
+        id, name, brand, calories,
+        total_carbs, fiber, sugar, added_sugar,
+        total_fats, omega_3, omega_6, saturated_fats, trans_fats,
+        protein,
+        vitamin_a, vitamin_b6, vitamin_b12, vitamin_c, vitamin_d, vitamin_e, vitamin_k,
+        thiamin, riboflavin, niacin, folate, pantothenic_acid, biotin, choline,
+        calcium, chromium, copper, fluoride, iodine, iron, magnesium, manganese, molybdenum, phosphorus, selenium, zinc,
+        potassium, sodium, chloride
+      )
+    `)
+    .eq('user_id', userId);
 
   if (opts?.dateFrom) req = req.gte('eaten_at', opts.dateFrom);
   if (opts?.dateTo) req = req.lte('eaten_at', opts.dateTo);
   if (opts?.meal) req = req.eq('meal', opts.meal);
 
-  if (typeof opts?.from === 'number' && typeof opts?.to === 'number') {
-    req = req.range(opts.from, opts.to);
-  } else if (typeof opts?.limit === 'number') {
-    req = req.limit(opts.limit);
-  }
+  if (typeof opts?.from === 'number' && typeof opts?.to === 'number') req = req.range(opts.from, opts.to);
+  else if (typeof opts?.limit === 'number') req = req.limit(opts.limit);
 
-  const { data, error } = await req.order('eaten_at', { ascending: false }).order('created_at', { ascending: false });
+  const { data, error } = await req
+    .order('eaten_at', { ascending: false })
+    .order('created_at', { ascending: false });
+
   if (error) throw error;
-  return data as JoinedFoodItem[];
+
+  // 🔧 Normalize `food` to a single object (or null), then cast
+  type Raw = (FoodItem & { food: Food | Food[] | null })[];
+  const raw = (data ?? []) as unknown as Raw;
+
+  const normalized: JoinedFoodItem[] = raw.map((row) => ({
+    ...row,
+    food: Array.isArray(row.food) ? (row.food[0] ?? null) : (row.food ?? null),
+  }));
+
+  return normalized;
+}
+
+export type RecentFood = {
+  food: Food;
+  lastServingSize?: string | null;
+  lastServings?: number | null;
+  lastMeal?: Meal | null;
+};
+
+export async function getRecentFoods(userId: string, limit = 30): Promise<RecentFood[]> {
+  const { data, error } = await supabase
+    .from('user_food_items')
+    .select(`
+      id,
+      eaten_at,
+      meal,
+      serving_size,
+      servings,
+      food:foods (*)
+    `)
+    .eq('user_id', userId)
+    .order('eaten_at', { ascending: false })
+    .limit(limit * 3);
+
+  if (error) throw error;
+
+  const out: RecentFood[] = [];
+  const seen = new Set<string>();
+  for (const row of data || []) {
+    const f = Array.isArray((row as any).food) ? (row as any).food[0] : (row as any).food;
+    if (f?.id && !seen.has(f.id)) {
+      seen.add(f.id);
+      out.push({
+        food: f,
+        lastServingSize: (row as any).serving_size ?? null,
+        lastServings: (row as any).servings ?? null,
+        lastMeal: (row as any).meal ?? null,
+      });
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+export async function getLastUsageForFood(
+  userId: string,
+  foodId: string
+): Promise<{ serving_size?: string | null; servings?: number | null; meal?: Meal | null } | null> {
+  const { data, error } = await supabase
+    .from('user_food_items')
+    .select('serving_size, servings, meal, eaten_at')
+    .eq('user_id', userId)
+    .eq('food_id', foodId)
+    .order('eaten_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ?? null;
 }
