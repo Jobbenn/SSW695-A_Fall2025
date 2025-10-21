@@ -39,6 +39,28 @@ function formatPretty(d: Date) {
   return `${month} ${day}${ordinal(day)}, ${year}`;
 }
 
+function pluralizeUnit(unit: string, servings: number | null | undefined) {
+  if (!unit) return unit;
+  if (servings == null) return unit;
+
+  // integer check
+  const isInteger = Number.isFinite(servings) && Math.floor(Number(servings)) === Number(servings);
+  const parts = unit.trim().split(/\s+/);
+  const last = parts.pop() || '';
+
+  // very basic rule per your spec
+  const endsWithS = /s$/i.test(last);
+
+  if (isInteger && Number(servings) > 1) {
+    // add 's' if not present
+    parts.push(endsWithS ? last : last + 's');
+  } else {
+    // serving_size = 1 OR not an integer → remove trailing 's' if present
+    parts.push(endsWithS ? last.replace(/s$/i, '') : last);
+  }
+  return parts.join(' ');
+}
+
 // Best-effort shape for the joined view.
 // Your v_user_food_items likely flattens columns; we try both flat and nested.
 type Joined = FoodItem & Partial<Food> & {
@@ -59,6 +81,58 @@ const MEAL_LABEL: Record<Meal, string> = {
   dinner: 'Dinner',
   snack: 'Snack',
 };
+
+function normalizeUnitBasic(u?: string | null) {
+  if (!u) return '';
+  const t = u.trim().toLowerCase();
+  // strip a single trailing "s" for rough singular/plural equivalence
+  return t.replace(/s$/i, '');
+}
+
+function toNumber(n: any, fallback = 0) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : fallback;
+}
+
+/**
+ * Compute calories to DISPLAY for a joined row.
+ * - Base calories come from the Food (flattened or nested) if present,
+ *   otherwise from the FoodItem (your view currently uses Food calories).
+ * - If Food default servings/serving_size differ from FoodItem's, scale calories.
+ */
+function computeDisplayCalories(item: any): number | null {
+  // pull whatever shape we have (flattened or nested)
+  const baseCalories =
+    (item?.calories != null ? item.calories : null) ??
+    (item?.food?.calories != null ? item.food.calories : null);
+
+  if (baseCalories == null) return null;
+
+  const itemServings = toNumber(item?.servings, 1);
+  const foodDefaultServings = toNumber(
+    item?.food?.servings ?? item?.food_servings, // support flattened alias if your view adds it later
+    1
+  );
+
+  const itemUnitN = normalizeUnitBasic(item?.serving_size);
+  const foodUnitN = normalizeUnitBasic(item?.food?.serving_size ?? item?.food_serving_size);
+
+  // Preferred scaling: by servings ratio if we know the Food default
+  if (foodDefaultServings > 0) {
+    // If units differ (beyond pluralization), we still use the servings ratio (it's most correct)
+    const factor = itemServings / foodDefaultServings;
+    return baseCalories * factor;
+  }
+
+  // If we don't know the Food default servings but we can detect a different unit,
+  // assume the Food baseline is "1" and scale by item servings.
+  if (itemUnitN && foodUnitN && itemUnitN !== foodUnitN) {
+    return baseCalories * (itemServings || 1);
+  }
+
+  // Otherwise just multiply by item servings (baseline 1)
+  return baseCalories * (itemServings || 1);
+}
 
 // ---------- Macro donut -----------
 function MacroDonut({
@@ -179,15 +253,16 @@ function ItemRow({
 }) {
   const name = (item.name ?? item.food?.name ?? '').trim() || '(Unnamed)';
   const servings = item.servings;
-  const unit = (item.serving_size ?? '').trim();
+  const rawUnit = (item.serving_size ?? '').trim();
+  const unit = pluralizeUnit(rawUnit, servings);
   const servingsText =
-    unit && servings != null
-      ? `${servings} ${unit}${servings === 1 ? '' : ''}`
+    rawUnit && servings != null
+      ? `${servings} ${unit}`
       : servings != null
       ? `${servings}`
       : '—';
 
-  const calories = item.calories ?? item.food?.calories ?? null;
+  const calories = computeDisplayCalories(item);
   const carbs = item.total_carbs ?? item.food?.total_carbs ?? null;
   const protein = item.protein ?? item.food?.protein ?? null;
   const fats = item.total_fats ?? item.food?.total_fats ?? null;

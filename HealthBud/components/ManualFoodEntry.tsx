@@ -12,7 +12,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../constants/theme';
 import type { Meal, NewFood, NewFoodItem, Food } from '../lib/foodTypes';
-import { addFood, addFoodItem, editFood, editFoodItem } from '../lib/foodApi';
+import { addFood, addFoodItem, editFood, editFoodItem, findFoodByNameAndServingSize } from '../lib/foodApi';
 
 type RouteParams = {
   dateISO?: string;
@@ -235,6 +235,51 @@ function MealSelector({
   );
 }
 
+function pluralizeUnit(unit: string, servings: number | null | undefined) {
+  if (!unit) return unit;
+  if (servings == null) return unit;
+
+  const isInteger = Number.isFinite(servings) && Math.floor(Number(servings)) === Number(servings);
+  const parts = unit.trim().split(/\s+/);
+  const last = parts.pop() || '';
+  const endsWithS = /s$/i.test(last);
+
+  if (isInteger && Number(servings) > 1) {
+    parts.push(endsWithS ? last : last + 's');
+  } else {
+    parts.push(endsWithS ? last.replace(/s$/i, '') : last);
+  }
+  return parts.join(' ');
+}
+
+function toSingularBasic(u: string) {
+  // very basic: strip ONE trailing "s" if present (case-insensitive)
+  return u.replace(/\s+$/, '').replace(/s$/i, '');
+}
+
+function toPluralBasic(u: string) {
+  return /s$/i.test(u) ? u : u + 's';
+}
+
+/** Build the set of candidate units we consider equivalent for duplicate checks */
+function unitVariants(u: string) {
+  const t = u.trim();
+  const s = toSingularBasic(t);
+  const p = toPluralBasic(s);
+  // Deduplicate while preserving case the user typed
+  return Array.from(new Set([t, s, p]));
+}
+
+/** Find an existing Food by name and any singular/plural variant of serving_size */
+async function findExistingFoodConsideringPlurality(name: string, servingSize: string) {
+  const variants = unitVariants(servingSize);
+  for (const v of variants) {
+    const found = await findFoodByNameAndServingSize(name, v);
+    if (found) return found;
+  }
+  return null;
+}
+
 export default function ManualFoodEntry() {
   const route = useRoute();
   const navigation = useNavigation<any>();
@@ -312,62 +357,111 @@ export default function ManualFoodEntry() {
   // ----- Prefill when creating from a picked food -----
   useEffect(() => {
     if (!prefillFood || editItem) return; // don’t override when editing
-    setForm((prev) => ({
-      ...prev,
-      name: prefillFood.name ?? '',
-      brand: prefillFood.brand ?? '',
-      calories: prefillFood.calories != null ? String(prefillFood.calories) : '',
 
-      serving_size: prefillServingSize !== undefined ? (prefillServingSize ?? '') : prev.serving_size,
-      servings: prefillServings !== undefined ? String(prefillServings ?? '') : prev.servings,
-      meal: prefillMeal !== undefined ? prefillMeal : prev.meal,
+    const baseDefaults = prefillFood.servings ?? 1;                   // Food's default servings
+    const desired = prefillServings ?? baseDefaults;                  // What user used last (Recent)
+    const factor = Number.isFinite(desired) && desired > 0
+      ? desired / (baseDefaults || 1)
+      : 1;
 
-      total_carbs: prefillFood.total_carbs != null ? String(prefillFood.total_carbs) : '',
-      fiber: prefillFood.fiber != null ? String(prefillFood.fiber) : '',
-      sugar: prefillFood.sugar != null ? String(prefillFood.sugar) : '',
-      added_sugar: prefillFood.added_sugar != null ? String(prefillFood.added_sugar) : '',
+    // 1) Set all fields from the Food row
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        name: prefillFood.name ?? '',
+        brand: prefillFood.brand ?? '',
+        calories: prefillFood.calories != null ? String(prefillFood.calories) : '',
 
-      total_fats: prefillFood.total_fats != null ? String(prefillFood.total_fats) : '',
-      omega_3: prefillFood.omega_3 != null ? String(prefillFood.omega_3) : '',
-      omega_6: prefillFood.omega_6 != null ? String(prefillFood.omega_6) : '',
-      saturated_fats: prefillFood.saturated_fats != null ? String(prefillFood.saturated_fats) : '',
-      trans_fats: prefillFood.trans_fats != null ? String(prefillFood.trans_fats) : '',
+        // prefer caller-provided prefill over Food defaults for these:
+        serving_size:
+          (prefillServingSize !== undefined ? (prefillServingSize ?? '') : (prefillFood.serving_size ?? '')) || '',
+        servings:
+          prefillServings !== undefined
+            ? String(prefillServings ?? '')
+            : (prefillFood.servings != null ? String(prefillFood.servings) : prev.servings),
 
-      protein: prefillFood.protein != null ? String(prefillFood.protein) : '',
+        meal: prefillMeal !== undefined ? prefillMeal : prev.meal,
 
-      vitamin_a: prefillFood.vitamin_a != null ? String(prefillFood.vitamin_a) : '',
-      vitamin_b6: prefillFood.vitamin_b6 != null ? String(prefillFood.vitamin_b6) : '',
-      vitamin_b12: prefillFood.vitamin_b12 != null ? String(prefillFood.vitamin_b12) : '',
-      vitamin_c: prefillFood.vitamin_c != null ? String(prefillFood.vitamin_c) : '',
-      vitamin_d: prefillFood.vitamin_d != null ? String(prefillFood.vitamin_d) : '',
-      vitamin_e: prefillFood.vitamin_e != null ? String(prefillFood.vitamin_e) : '',
-      vitamin_k: prefillFood.vitamin_k != null ? String(prefillFood.vitamin_k) : '',
+        total_carbs: prefillFood.total_carbs != null ? String(prefillFood.total_carbs) : '',
+        fiber: prefillFood.fiber != null ? String(prefillFood.fiber) : '',
+        sugar: prefillFood.sugar != null ? String(prefillFood.sugar) : '',
+        added_sugar: prefillFood.added_sugar != null ? String(prefillFood.added_sugar) : '',
 
-      thiamin: prefillFood.thiamin != null ? String(prefillFood.thiamin) : '',
-      riboflavin: prefillFood.riboflavin != null ? String(prefillFood.riboflavin) : '',
-      niacin: prefillFood.niacin != null ? String(prefillFood.niacin) : '',
-      folate: prefillFood.folate != null ? String(prefillFood.folate) : '',
-      pantothenic_acid: prefillFood.pantothenic_acid != null ? String(prefillFood.pantothenic_acid) : '',
-      biotin: prefillFood.biotin != null ? String(prefillFood.biotin) : '',
-      choline: prefillFood.choline != null ? String(prefillFood.choline) : '',
+        total_fats: prefillFood.total_fats != null ? String(prefillFood.total_fats) : '',
+        omega_3: prefillFood.omega_3 != null ? String(prefillFood.omega_3) : '',
+        omega_6: prefillFood.omega_6 != null ? String(prefillFood.omega_6) : '',
+        saturated_fats: prefillFood.saturated_fats != null ? String(prefillFood.saturated_fats) : '',
+        trans_fats: prefillFood.trans_fats != null ? String(prefillFood.trans_fats) : '',
 
-      calcium: prefillFood.calcium != null ? String(prefillFood.calcium) : '',
-      chromium: prefillFood.chromium != null ? String(prefillFood.chromium) : '',
-      copper: prefillFood.copper != null ? String(prefillFood.copper) : '',
-      fluoride: prefillFood.fluoride != null ? String(prefillFood.fluoride) : '',
-      iodine: prefillFood.iodine != null ? String(prefillFood.iodine) : '',
-      iron: prefillFood.iron != null ? String(prefillFood.iron) : '',
-      magnesium: prefillFood.magnesium != null ? String(prefillFood.magnesium) : '',
-      manganese: prefillFood.manganese != null ? String(prefillFood.manganese) : '',
-      molybdenum: prefillFood.molybdenum != null ? String(prefillFood.molybdenum) : '',
-      phosphorus: prefillFood.phosphorus != null ? String(prefillFood.phosphorus) : '',
-      selenium: prefillFood.selenium != null ? String(prefillFood.selenium) : '',
-      zinc: prefillFood.zinc != null ? String(prefillFood.zinc) : '',
+        protein: prefillFood.protein != null ? String(prefillFood.protein) : '',
 
-      potassium: prefillFood.potassium != null ? String(prefillFood.potassium) : '',
-      sodium: prefillFood.sodium != null ? String(prefillFood.sodium) : '',
-      chloride: prefillFood.chloride != null ? String(prefillFood.chloride) : '',
-    }));
+        vitamin_a: prefillFood.vitamin_a != null ? String(prefillFood.vitamin_a) : '',
+        vitamin_b6: prefillFood.vitamin_b6 != null ? String(prefillFood.vitamin_b6) : '',
+        vitamin_b12: prefillFood.vitamin_b12 != null ? String(prefillFood.vitamin_b12) : '',
+        vitamin_c: prefillFood.vitamin_c != null ? String(prefillFood.vitamin_c) : '',
+        vitamin_d: prefillFood.vitamin_d != null ? String(prefillFood.vitamin_d) : '',
+        vitamin_e: prefillFood.vitamin_e != null ? String(prefillFood.vitamin_e) : '',
+        vitamin_k: prefillFood.vitamin_k != null ? String(prefillFood.vitamin_k) : '',
+
+        thiamin: prefillFood.thiamin != null ? String(prefillFood.thiamin) : '',
+        riboflavin: prefillFood.riboflavin != null ? String(prefillFood.riboflavin) : '',
+        niacin: prefillFood.niacin != null ? String(prefillFood.niacin) : '',
+        folate: prefillFood.folate != null ? String(prefillFood.folate) : '',
+        pantothenic_acid: prefillFood.pantothenic_acid != null ? String(prefillFood.pantothenic_acid) : '',
+        biotin: prefillFood.biotin != null ? String(prefillFood.biotin) : '',
+        choline: prefillFood.choline != null ? String(prefillFood.choline) : '',
+
+        calcium: prefillFood.calcium != null ? String(prefillFood.calcium) : '',
+        chromium: prefillFood.chromium != null ? String(prefillFood.chromium) : '',
+        copper: prefillFood.copper != null ? String(prefillFood.copper) : '',
+        fluoride: prefillFood.fluoride != null ? String(prefillFood.fluoride) : '',
+        iodine: prefillFood.iodine != null ? String(prefillFood.iodine) : '',
+        iron: prefillFood.iron != null ? String(prefillFood.iron) : '',
+        magnesium: prefillFood.magnesium != null ? String(prefillFood.magnesium) : '',
+        manganese: prefillFood.manganese != null ? String(prefillFood.manganese) : '',
+        molybdenum: prefillFood.molybdenum != null ? String(prefillFood.molybdenum) : '',
+        phosphorus: prefillFood.phosphorus != null ? String(prefillFood.phosphorus) : '',
+        selenium: prefillFood.selenium != null ? String(prefillFood.selenium) : '',
+        zinc: prefillFood.zinc != null ? String(prefillFood.zinc) : '',
+
+        potassium: prefillFood.potassium != null ? String(prefillFood.potassium) : '',
+        sodium: prefillFood.sodium != null ? String(prefillFood.sodium) : '',
+        chloride: prefillFood.chloride != null ? String(prefillFood.chloride) : '',
+      };
+
+      // 2) If desired servings differs from the Food default, scale numbers and pluralize the unit now
+      if (Number.isFinite(factor) && factor > 0 && factor !== 1) {
+        // scale numeric fields
+        const scaled = { ...next };
+        ([
+          'calories',
+          'total_carbs','fiber','sugar','added_sugar',
+          'total_fats','omega_3','omega_6','saturated_fats','trans_fats',
+          'protein',
+          'vitamin_a','vitamin_b6','vitamin_b12','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+          'thiamin','riboflavin','niacin','folate','pantothenic_acid','biotin','choline',
+          'calcium','chromium','copper','fluoride','iodine','iron','magnesium','manganese','molybdenum','phosphorus','selenium','zinc',
+          'potassium','sodium','chloride',
+        ] as const).forEach((k) => {
+          const n = Number((scaled as any)[k]);
+          if (Number.isFinite(n)) (scaled as any)[k] = String(Number((n * factor).toFixed(6)));
+        });
+
+        // pluralize serving_size to match desired
+        scaled.serving_size = pluralizeUnit(scaled.serving_size, desired);
+        scaled.servings = String(desired);
+
+        // prime the prevServingsRef so further edits scale relative to the latest count
+        prevServingsRef.current = Number(desired) || 1;
+
+        return scaled;
+      }
+
+      // Ensure serving_size agrees with current count even when factor===1
+      next.serving_size = pluralizeUnit(next.serving_size, desired);
+      prevServingsRef.current = Number(desired) || 1;
+      return next;
+    });
   }, [prefillFood, prefillServingSize, prefillServings, prefillMeal, editItem]);
 
   const set = (k: keyof FormState, v: string) => setForm((prev) => ({ ...prev, [k]: v }));
@@ -438,9 +532,21 @@ export default function ManualFoodEntry() {
     setSubmitting(true);
 
     const mealToUse = sanitizeMeal(form.meal);
+    const defaultServingSize = form.serving_size.trim() || null;
+    const defaultServings = servingsNum;
+
+    // Helpers for duplicate check (singular/plural are equivalent)
+    const toSingularBasic = (u: string) => u.replace(/\s+$/, '').replace(/s$/i, '');
+    const toPluralBasic = (u: string) => (/s$/i.test(u) ? u : u + 's');
+    const unitVariants = (u: string) => {
+      const t = u.trim();
+      const s = toSingularBasic(t);
+      const p = toPluralBasic(s);
+      return Array.from(new Set([t, s, p]));
+    };
 
     try {
-      // Build the food payload
+      // Build the food payload (now including default serving fields)
       const foodPayload: NewFood = {
         name: form.name.trim(),
         brand: form.brand.trim() || null,
@@ -491,16 +597,19 @@ export default function ManualFoodEntry() {
         potassium: Number(form.potassium) || 0,
         sodium: Number(form.sodium) || 0,
         chloride: Number(form.chloride) || 0,
+
+        serving_size: defaultServingSize,
+        servings: defaultServings,
       };
 
       if (editItem) {
-        // UPDATE flow
+        // UPDATE flow — also refresh the Food defaults
         await editFood(editItem.food_id, foodPayload as Partial<NewFood>);
         await editFoodItem(editItem.id, {
           eaten_at: dateISO,
           meal: mealToUse,
-          serving_size: form.serving_size.trim() || null,
-          servings: servingsNum,
+          serving_size: defaultServingSize,
+          servings: defaultServings,
         });
 
         Alert.alert('Updated', 'Your entry has been updated.');
@@ -508,24 +617,65 @@ export default function ManualFoodEntry() {
         return;
       }
 
-      // CREATE flow — avoid duplicate if unchanged from prefillFood
+      // CREATE flow
       let foodIdToUse: string | null = null;
 
-      if (prefillFood && payloadEqualsFood(prefillFood, foodPayload)) {
-        // Unchanged → reuse existing food id
+      if (prefillFood) {
+        // We came in with an existing Food (Recent/All or duplicate redirect).
+        // Reuse it; if fields changed, update instead of inserting.
+        const needsUpdate = !payloadEqualsFood(prefillFood, foodPayload);
+        if (needsUpdate) {
+          await editFood(prefillFood.id, foodPayload as Partial<NewFood>);
+        }
         foodIdToUse = prefillFood.id;
       } else {
-        // Changed → create a new foods row
+        // No prefill → check duplicates by name + ANY variant of serving size
+        let existing: Food | null = null;
+        for (const variant of unitVariants(form.serving_size)) {
+          // findFoodByNameAndServingSize is case-insensitive on name, exact on serving_size.
+          // We call it for t/s/p variants so "piece" == "pieces".
+          // @ts-ignore: type of Food import in your project
+          const maybe = await findFoodByNameAndServingSize(form.name.trim(), variant);
+          if (maybe) { existing = maybe; break; }
+        }
+
+        if (existing) {
+          Alert.alert(
+            'Item already exists',
+            'Take me to that item?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Go',
+                onPress: () => {
+                  navigation.replace('ManualFoodEntry', {
+                    dateISO,
+                    userId,
+                    prefillFood: existing,
+                    prefillServingSize: form.serving_size.trim(),
+                    prefillServings: servingsNum,
+                    prefillMeal: mealToUse,
+                  });
+                },
+              },
+            ]
+          );
+          setSubmitting(false);
+          return; // prevent creating a duplicate Food
+        }
+
+        // No duplicate → insert a new Food with defaults
         const insertedFood = await addFood(foodPayload);
         foodIdToUse = insertedFood.id;
       }
 
+      // Create the Food Item
       const newFoodItem: Omit<NewFoodItem, 'user_id'> = {
         food_id: foodIdToUse!,
         eaten_at: dateISO,
         meal: mealToUse,
-        serving_size: form.serving_size.trim() || null,
-        servings: servingsNum,
+        serving_size: defaultServingSize,
+        servings: defaultServings,
       };
       await addFoodItem(userId, newFoodItem);
 
@@ -538,6 +688,44 @@ export default function ManualFoodEntry() {
       setSubmitting(false);
     }
   }, [form, dateISO, userId, navigation, submitting, editItem, prefillFood]);
+
+  // ManualFoodEntry.tsx (top-level inside component)
+  const prevServingsRef = React.useRef<number>(Number(initialForm.servings) || 1);
+
+  // 1) keys we actually scale (const tuple -> narrow key type)
+  const NUMERIC_KEYS = [
+    'calories',
+    'total_carbs','fiber','sugar','added_sugar',
+    'total_fats','omega_3','omega_6','saturated_fats','trans_fats',
+    'protein',
+    'vitamin_a','vitamin_b6','vitamin_b12','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+    'thiamin','riboflavin','niacin','folate','pantothenic_acid','biotin','choline',
+    'calcium','chromium','copper','fluoride','iodine','iron','magnesium','manganese','molybdenum','phosphorus','selenium','zinc',
+    'potassium','sodium','chloride',
+  ] as const;
+  type NumericKey = typeof NUMERIC_KEYS[number];
+
+  // 2) scaler util returns a string (good for your text inputs)
+  function scaleNumberString(value: string | undefined, factor: number) {
+    if (!value) return value ?? '';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return value;
+    const next = n * factor;
+    return String(Number(next.toFixed(6))); // trim trailing zeros
+  }
+
+  // 3) scale all numeric fields in the form (typed keys prevent the Meal error)
+  function scaleAllNumericFields(factor: number) {
+    setForm(prev => {
+      const next = { ...prev };
+      for (const k of NUMERIC_KEYS) {
+        // These fields in FormState are strings (from TextInputs)
+        const current = prev[k] as unknown as string | undefined;
+        (next as Record<NumericKey, string>)[k] = scaleNumberString(current, factor);
+      }
+      return next;
+    });
+  }
 
   // Put the Save button in the header (top-right)
   useLayoutEffect(() => {
@@ -584,14 +772,30 @@ export default function ManualFoodEntry() {
         <LabeledInput
           label="Serving size"
           value={form.serving_size}
-          onChangeText={(t) => set('serving_size', t)}
+          onChangeText={(txt) => {
+            const sv = Number(form.servings);
+            const pluralized = pluralizeUnit(txt, Number.isFinite(sv) ? sv : null);
+            set('serving_size', pluralized);
+          }}
           placeholder='e.g. "cup" or "grams"'
           theme={theme}
         />
         <LabeledInput
           label="Servings"
           value={form.servings}
-          onChangeText={(t) => set('servings', t.replace(/[^0-9.]/g, ''))}
+          onChangeText={(t) => {
+            const sanitized = t.replace(/[^0-9.]/g, '');
+            const next = Number(sanitized);
+            const prev = Number(prevServingsRef.current) || 1;
+            set('servings', sanitized);
+            if (Number.isFinite(next) && next > 0 && prev > 0 && next !== prev) {
+              const factor = next / prev;
+              scaleAllNumericFields(factor);
+              // keep serving_size pluralization/depluralization in sync with the new count
+              setForm((old) => ({ ...old, serving_size: pluralizeUnit(old.serving_size, next) }));
+              prevServingsRef.current = next;
+            }
+          }}
           placeholder="1"
           keyboardType="numeric"
           theme={theme}

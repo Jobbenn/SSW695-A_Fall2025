@@ -9,7 +9,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import SafeScreen from './SafeScreen';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Colors } from '../constants/theme';
@@ -23,6 +23,23 @@ import {
 
 type RouteParams = { dateISO?: string; userId?: string };
 type TabKey = 'recent' | 'all';
+
+function pluralizeUnit(unit: string, servings: number | null | undefined) {
+  if (!unit) return unit;
+  if (servings == null) return unit;
+
+  const isInteger = Number.isFinite(servings) && Math.floor(Number(servings)) === Number(servings);
+  const parts = unit.trim().split(/\s+/);
+  const last = parts.pop() || '';
+  const endsWithS = /s$/i.test(last);
+
+  if (isInteger && Number(servings) > 1) {
+    parts.push(endsWithS ? last : last + 's');
+  } else {
+    parts.push(endsWithS ? last.replace(/s$/i, '') : last);
+  }
+  return parts.join(' ');
+}
 
 export default function AddFood() {
   const route = useRoute();
@@ -66,6 +83,14 @@ export default function AddFood() {
       setLoadingAll(false);
     }
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // refresh both so "Recent" lastServings and "All" defaults stay in sync
+      loadRecent();
+      loadAll();
+    }, [loadRecent, loadAll])
+  );
 
   useEffect(() => {
     loadRecent();
@@ -138,7 +163,9 @@ export default function AddFood() {
           <Text style={{ color: theme.muted, marginTop: 2 }} numberOfLines={1}>
             {item.food.brand ? `${item.food.brand} • ` : ''}
             {item.food.calories != null ? `${Math.round(item.food.calories)} kcal` : '—'}
-            {item.lastServingSize ? ` • ${item.lastServings ?? 1} ${item.lastServingSize}` : ''}
+            {item.lastServingSize
+              ? ` • ${item.lastServings ?? 1} ${pluralizeUnit(item.lastServingSize, item.lastServings ?? 1)}`
+              : ''}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.muted} />
@@ -164,6 +191,9 @@ export default function AddFood() {
         <Text style={{ color: theme.muted, marginTop: 2 }} numberOfLines={1}>
             {item.brand ? `${item.brand} • ` : ''}
             {item.calories != null ? `${Math.round(item.calories)} kcal` : '—'}
+            {item.serving_size
+              ? ` • ${item.servings ?? 1} ${pluralizeUnit(item.serving_size, item.servings ?? 1)}`
+              : ''}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.muted} />

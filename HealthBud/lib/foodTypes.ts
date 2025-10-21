@@ -7,6 +7,9 @@ export type Food = {
   brand: string | null;
   calories: number;
 
+  serving_size?: string | null;
+  servings?: number | null;
+
   total_carbs?: number | 0;
   fiber?: number | 0;
   sugar?: number | 0;
@@ -57,13 +60,14 @@ export type Food = {
   updated_at?: string;
 };
 
-export type NewFood = Pick<Food, 'name' | 'calories'> & Partial<Omit<Food, 'id' | 'name' | 'calories'>>;
+export type NewFood = Pick<Food, 'name' | 'calories'> & 
+  Partial<Omit<Food, 'id' | 'name' | 'calories'>>;
 
 export type FoodItem = {
   id: string;
   user_id: string;
   food_id: string;
-  eaten_at: string;   // ISO date (YYYY-MM-DD)
+  eaten_at: string;
   meal: Meal;
   serving_size: string | 'Serving' | null;
   servings: number;

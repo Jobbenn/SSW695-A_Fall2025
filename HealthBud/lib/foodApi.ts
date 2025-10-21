@@ -225,3 +225,16 @@ export async function getLastUsageForFood(
     meal: meal ?? null,
   };
 }
+
+export async function findFoodByNameAndServingSize(name: string, servingSize: string | null) {
+  let req = supabase.from('foods').select('*').limit(1);
+  req = req.ilike('name', name); // case-insensitive
+  if (servingSize == null || servingSize.trim() === '') {
+    req = req.is('serving_size', null);
+  } else {
+    req = req.eq('serving_size', servingSize.trim());
+  }
+  const { data, error } = await req;
+  if (error) throw error;
+  return data?.[0] ?? null;
+}
