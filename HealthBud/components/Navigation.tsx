@@ -9,6 +9,7 @@ import { useColorScheme } from 'react-native'
 import Diary from './Diary';
 import Charts from './Charts';
 import Account from './Account';
+import TestPage from './TestPage';
 import SafeScreen from './SafeScreen';
 import { Colors } from '../constants/theme';
 
@@ -38,6 +39,8 @@ export default function Navigation({ session }: Props) {
               iconName = focused ? 'stats-chart' : 'stats-chart-outline';
             } else if (route.name === 'Account') {
               iconName = focused ? 'person-circle' : 'person-circle-outline';
+            } else if (route.name === 'TEST') {
+              iconName = focused ? 'person-circle' : 'person-circle-outline';
             }
             return <Ionicons name={iconName} size={size} color={color} />;
           },
@@ -45,6 +48,7 @@ export default function Navigation({ session }: Props) {
       >
         <Tab.Screen name="Diary" component={Diary} />
         <Tab.Screen name="Charts" component={Charts} />
+        <Tab.Screen name="TEST" component={TestPage} />
         <Tab.Screen
           name="Account"
           children={() => <Account session={session} />}
