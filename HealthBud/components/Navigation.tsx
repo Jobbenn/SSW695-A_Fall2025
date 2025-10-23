@@ -11,7 +11,7 @@ import Diary from './Diary';
 import Charts from './Charts';
 import Account from './Account';
 import AddFood from './AddFood';
-import ManualFoodEntry from './ManualFoodEntry';
+import FoodEntry from './FoodEntry';
 import { Colors } from '../constants/theme';
 
 const Tab = createBottomTabNavigator();
@@ -97,9 +97,6 @@ export default function Navigation({ session }: Props) {
                   {/* Manual entry icon — larger and takes user to new screen */}
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() =>
-                      navigation.navigate('ManualFoodEntry', { dateISO, userId })
-                    }
                     hitSlop={10}
                   >
                     <Ionicons name="add" size={28} color={theme.text} />
@@ -112,10 +109,10 @@ export default function Navigation({ session }: Props) {
 
         {/* NEW blank page for manual food entry */}
         <Stack.Screen
-          name="ManualFoodEntry"
-          component={ManualFoodEntry}
+          name="FoodEntry"
+          component={FoodEntry}
           options={{
-            title: 'Manual Food Entry',
+            title: 'Food Entry',
             headerBackTitle: 'Back',
             headerTintColor: theme.text,
             headerStyle: { backgroundColor: theme.background },

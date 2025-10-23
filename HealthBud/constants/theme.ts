@@ -9,6 +9,7 @@ export const Colors = {
     text: '#555', // text, border, and line color
     border: '#555', 
     muted: '#888', // disabled elements, placeholder text
+    light_muted: '#eee',
   },
   dark: { 
     primary: '#ffcd4e', // primary app color, accent color after login

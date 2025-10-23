@@ -111,11 +111,11 @@ export default function AddFood() {
   // From "Recent": pass food AND last used serving details
   const onSelectRecent = useCallback(
     (rf: RecentFood) => {
-      navigation.navigate('ManualFoodEntry', {
+      navigation.navigate('FoodEntry', {
         dateISO,
         userId,
         prefillFood: rf.food,
-        prefillServingSize: rf.lastServingSize ?? undefined,
+        prefillServingSize: rf.food.serving_size ?? undefined,
         prefillServings: rf.lastServings ?? undefined,
         prefillMeal: sanitizeMeal(rf.lastMeal),
       });
@@ -134,11 +134,11 @@ export default function AddFood() {
           // ignore lookup errors; still navigate
         }
       }
-      navigation.navigate('ManualFoodEntry', {
+      navigation.navigate('FoodEntry', {
         dateISO,
         userId,
         prefillFood: food,
-        prefillServingSize: last?.serving_size ?? undefined,
+        prefillServingSize: food.serving_size ?? undefined,
         prefillServings: last?.servings ?? undefined,
         prefillMeal: sanitizeMeal(last?.meal),
       });
@@ -146,31 +146,47 @@ export default function AddFood() {
     [navigation, dateISO, userId]
   );
 
+  function caloriesForLastServings(food: { calories?: number | null; servings?: number | null }, lastServings?: number | null) {
+    const baseCals = Number(food.calories ?? NaN);
+    const baseServings = Number(food.servings ?? 1) || 1; // guard zero/undefined
+    const usedServings = Number(lastServings ?? 1) || 1;
+
+    if (!Number.isFinite(baseCals)) return null;
+    const scaled = baseCals * (usedServings / baseServings);
+    return Math.round(scaled); // or use toFixed(0) if you prefer a string
+  }
+
   const renderRecentItem = useCallback(
-    ({ item }: { item: RecentFood }) => (
-      <Pressable
-        onPress={() => onSelectRecent(item)}
-        style={({ pressed }) => [
-          styles.row,
-          { borderColor: theme.border, opacity: pressed ? 0.9 : 1 },
-        ]}
-        hitSlop={8}
-      >
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
-            {item.food.name || '(Unnamed)'}
-          </Text>
-          <Text style={{ color: theme.muted, marginTop: 2 }} numberOfLines={1}>
-            {item.food.brand ? `${item.food.brand} • ` : ''}
-            {item.food.calories != null ? `${Math.round(item.food.calories)} kcal` : '—'}
-            {item.lastServingSize
-              ? ` • ${item.lastServings ?? 1} ${pluralizeUnit(item.lastServingSize, item.lastServings ?? 1)}`
-              : ''}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-      </Pressable>
-    ),
+    ({ item }: { item: RecentFood }) => {
+      const cals = caloriesForLastServings(item.food, item.lastServings);
+
+      return (
+        <Pressable
+          onPress={() => onSelectRecent(item)}
+          style={({ pressed }) => [
+            styles.row,
+            { borderColor: theme.border, opacity: pressed ? 0.9 : 1 },
+          ]}
+          hitSlop={8}
+        >
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+              {item.food.name || '(Unnamed)'}
+            </Text>
+
+            <Text style={{ color: theme.muted, marginTop: 2 }} numberOfLines={1}>
+              {item.food.brand ? `${item.food.brand} • ` : ''}
+              {cals != null ? `${cals} kcal` : '—'}
+              {item.food.serving_size
+                ? ` • ${item.lastServings ?? 1} ${pluralizeUnit(item.food.serving_size, item.lastServings ?? 1)}`
+                : ''}
+            </Text>
+          </View>
+
+          <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+        </Pressable>
+      );
+    },
     [onSelectRecent, theme]
   );
 

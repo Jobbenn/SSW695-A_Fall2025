@@ -253,7 +253,7 @@ function ItemRow({
 }) {
   const name = (item.name ?? item.food?.name ?? '').trim() || '(Unnamed)';
   const servings = item.servings;
-  const rawUnit = (item.serving_size ?? '').trim();
+  const rawUnit = (item.food?.serving_size ?? '').trim();
   const unit = pluralizeUnit(rawUnit, servings);
   const servingsText =
     rawUnit && servings != null
@@ -432,7 +432,7 @@ export default function Diary() {
 
   const onEdit = useCallback(
     (j: Joined) => {
-      navigation.navigate('ManualFoodEntry', {
+      navigation.navigate('FoodEntry', {
         dateISO,
         userId,
         editItem: j,

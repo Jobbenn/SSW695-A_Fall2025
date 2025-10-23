@@ -1,6 +1,6 @@
 // lib/foodApi.ts
 import { supabase } from './supabase';
-import type { Food, NewFood, FoodItem, NewFoodItem, Meal } from './foodTypes';
+import type { Food, NewFood, FoodItem, NewFoodItem, Meal, RecentFood } from './foodTypes';
 
 type PageOpts = { limit?: number; from?: number; to?: number };
 
@@ -114,9 +114,9 @@ export async function getJoinedFoodItems(
   let req = supabase
     .from('user_food_items')
     .select(`
-      id, user_id, food_id, eaten_at, meal, serving_size, servings, created_at, updated_at,
+      id, user_id, food_id, eaten_at, meal, servings, created_at, updated_at,
       food:foods (
-        id, name, brand, calories,
+        id, name, brand, calories, serving_size,
         total_carbs, fiber, sugar, added_sugar,
         total_fats, omega_3, omega_6, saturated_fats, trans_fats,
         protein,
@@ -153,88 +153,87 @@ export async function getJoinedFoodItems(
   return normalized;
 }
 
-export type RecentFood = {
-  food: Food;
-  lastServingSize?: string | null;
-  lastServings?: number | null;
-  lastMeal?: Meal | null;
+type RecentRow = {
+  food_id: string;
+  servings: number | null;
+  meal: Meal | null;
+  created_at: string;
+  food: Food | null;
 };
 
 export async function getRecentFoods(userId: string, limit = 30): Promise<RecentFood[]> {
   const { data, error } = await supabase
     .from('user_food_items')
     .select(`
-      id,
-      eaten_at,
-      meal,
-      serving_size,
+      food_id,
       servings,
-      food:foods (*)
+      meal,
+      created_at,
+      food:food_id (
+        id,
+        name,
+        brand,
+        calories,
+        serving_size,
+        servings,
+        total_carbs,
+        total_fats,
+        protein
+      )
     `)
     .eq('user_id', userId)
-    .order('eaten_at', { ascending: false })
-    .limit(limit * 3);
+    .order('created_at', { ascending: false })
+    .returns<RecentRow[]>(); // <-- key for TS
 
   if (error) throw error;
 
-  const out: RecentFood[] = [];
   const seen = new Set<string>();
-  for (const row of data || []) {
-    const f = Array.isArray((row as any).food) ? (row as any).food[0] : (row as any).food;
-    if (f?.id && !seen.has(f.id)) {
-      seen.add(f.id);
-      out.push({
-        food: f,
-        lastServingSize: (row as any).serving_size ?? null,
-        lastServings: (row as any).servings ?? null,
-        lastMeal: (row as any).meal ?? null,
-      });
-      if (out.length >= limit) break;
-    }
+  const rows: RecentFood[] = [];
+
+  for (const r of data ?? []) {
+    if (!r.food_id || seen.has(r.food_id)) continue;
+    if (!r.food) continue; // should exist, but be safe
+
+    rows.push({
+      food: r.food,                           // <-- now matches Food type
+      lastServings: r.servings ?? undefined,  // item-level info we keep
+      lastMeal: r.meal ?? undefined,
+    });
+
+    seen.add(r.food_id);
+    if (rows.length >= limit) break;
   }
-  return out;
+
+  return rows;
 }
 
-export async function getLastUsageForFood(
-  userId: string,
-  foodId: string
-): Promise<{ serving_size?: string | null; servings?: number | null; meal?: Meal | null } | null> {
+export async function getLastUsageForFood(userId: string, foodId: string) {
   const { data, error } = await supabase
     .from('user_food_items')
-    .select('serving_size, servings, meal, eaten_at')
+    .select('servings, meal, created_at')
     .eq('user_id', userId)
     .eq('food_id', foodId)
-    .order('eaten_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error; // not found is ok
+  return data ? { servings: data.servings, meal: data.meal } : null;
+}
+
+export async function findFoodByNameAndBrand(name: string, brand?: string | null): Promise<Food | null> {
+  const nameNorm = name.trim();
+  const brandNorm = (brand ?? '').trim();
+
+  // Prefer exact case-insensitive equality where possible
+  const { data, error } = await supabase
+    .from('foods')
+    .select('*')
+    .ilike('name', nameNorm)          // if you want exact, use .or with eq(lower(name))
+    .ilike('brand', brandNorm || '')  // empty string will only match empty brands
     .limit(1)
     .maybeSingle();
 
   if (error) throw error;
-
-  if (!data) return null;
-
-  // Normalize meal defensively
-  const rawMeal = (data as any).meal;
-  const meal =
-    typeof rawMeal === 'string'
-      ? (rawMeal.toLowerCase().trim() as Meal)
-      : (rawMeal as Meal | null);
-
-  return {
-    serving_size: (data as any).serving_size ?? null,
-    servings: (data as any).servings ?? null,
-    meal: meal ?? null,
-  };
-}
-
-export async function findFoodByNameAndServingSize(name: string, servingSize: string | null) {
-  let req = supabase.from('foods').select('*').limit(1);
-  req = req.ilike('name', name); // case-insensitive
-  if (servingSize == null || servingSize.trim() === '') {
-    req = req.is('serving_size', null);
-  } else {
-    req = req.eq('serving_size', servingSize.trim());
-  }
-  const { data, error } = await req;
-  if (error) throw error;
-  return data?.[0] ?? null;
+  return data ?? null;
 }

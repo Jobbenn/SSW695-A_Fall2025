@@ -69,10 +69,15 @@ export type FoodItem = {
   food_id: string;
   eaten_at: string;
   meal: Meal;
-  serving_size: string | 'Serving' | null;
   servings: number;
   created_at?: string;
   updated_at?: string;
 };
 
 export type NewFoodItem = Omit<FoodItem, 'id' | 'created_at' | 'updated_at'>;
+
+export type RecentFood = {
+  food: Food;
+  lastServings?: number | null;
+  lastMeal?: string | null;
+};
