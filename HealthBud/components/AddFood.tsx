@@ -13,11 +13,10 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { Ionicons } from '@expo/vector-icons';
 
 import { Colors } from '../constants/theme';
-import type { Food } from '../lib/foodTypes';
+import type { Food, RecentFood } from '../lib/foodTypes';
 import {
   getFood,
   getRecentFoods,
-  type RecentFood,
   getLastUsageForFood,
 } from '../lib/foodApi';
 
