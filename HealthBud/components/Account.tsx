@@ -248,7 +248,7 @@ export default function Account({ session }: { session: Session }) {
               ]}
               hitSlop={8}
             >
-              <Text style={{ color: theme.text, fontWeight: active ? '700' : '400' }}>
+              <Text style={{ color: theme.text }}>
                 {opt === 'metric' ? 'Metric' : 'Imperial'}
               </Text>
             </Pressable>
@@ -269,8 +269,8 @@ export default function Account({ session }: { session: Session }) {
     onChange: (v: boolean) => void
   }) {
     return (
-      <View style={{ marginTop: 12 }}>
-        <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+      <View style={{ marginTop: 12, marginLeft: 10 }}>
+        <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>{label}</Text>
         <View style={styles.row}>
           {[
             { k: 'No', v: false },
@@ -289,7 +289,7 @@ export default function Account({ session }: { session: Session }) {
                   },
                 ]}
               >
-                <Text style={{ color: theme.text, fontWeight: active ? '700' : '400' }}>
+                <Text style={{ color: theme.text }}>
                   {o.k}
                 </Text>
               </Pressable>
@@ -314,8 +314,8 @@ export default function Account({ session }: { session: Session }) {
     pretty?: Record<string, string>
   }) {
     return (
-      <View style={{ marginTop: 12 }}>
-        <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+      <View style={{ marginTop: 12, marginLeft: 10 }}>
+        <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16}]}>{label}</Text>
         <View style={styles.rowWrap}>
           {options.map((opt) => {
             const active = value === opt
@@ -331,7 +331,7 @@ export default function Account({ session }: { session: Session }) {
                   },
                 ]}
               >
-                <Text style={{ color: theme.text, fontWeight: active ? '700' : '400' }}>
+                <Text style={{ color: theme.text }}>
                   {pretty?.[opt] ?? opt}
                 </Text>
               </Pressable>
@@ -396,50 +396,61 @@ export default function Account({ session }: { session: Session }) {
                 inputContainerStyle={{ borderBottomColor: theme.text }}
               />
             </View>
+            
+            {/* Age + Gender row */}
+            <View style={[styles.verticallySpaced, { flexDirection: 'row', gap: 12 }]}>
+              {/* Age */}
+              <View style={{ width: 100 }}>
+                <Input
+                  label="Age"
+                  keyboardType="number-pad"
+                  value={age}
+                  onChangeText={setAge}
+                  labelStyle={{ color: theme.text }}
+                  inputStyle={{ color: theme.text }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
 
-            {/* Age */}
-            <View style={styles.verticallySpaced}>
-              <Input
-                label="Age"
-                keyboardType="number-pad"
-                value={age}
-                onChangeText={setAge}
-                labelStyle={{ color: theme.text }}
-                inputStyle={{ color: theme.text }}
-                inputContainerStyle={{ borderBottomColor: theme.text }}
-              />
+              {/* Gender */}
+              <View style={{ flex: 1, justifyContent: 'center', marginTop: -32, marginLeft: 28 }}>
+                <EnumChips<Gender>
+                  label="Gender"
+                  value={gender}
+                  options={['male', 'female', 'other']}
+                  onChange={setGender}
+                  pretty={{ male: 'Male', female: 'Female', other: 'Other' }}
+                />
+              </View>
             </View>
 
-            {/* Gender */}
-            <EnumChips<Gender>
-              label="Gender"
-              value={gender}
-              options={['male', 'female', 'other']}
-              onChange={setGender}
-              pretty={{ male: 'Male', female: 'Female', other: 'Other' }}
-            />
-
-            {/* Pregnant / Lactating */}
-            <BoolToggle label="Pregnant" value={pregnant} onChange={setPregnant} />
-            <BoolToggle label="Lactating" value={lactating} onChange={setLactating} />
-
-            {/* Unit preference */}
-            <View style={{ marginTop: 8 }}>
-              <Text style={[styles.label, { color: theme.text }]}>Unit</Text>
-              {unitChips}
+            {/* Pregnant + Lactating Row */}
+            <View style={[styles.verticallySpaced, { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 }]}>
+                {/* Pregnant / Lactating */}
+              <BoolToggle label="Pregnant" value={pregnant} onChange={setPregnant} />
+              <BoolToggle label="Lactating" value={lactating} onChange={setLactating} />
             </View>
 
-            {/* Weight */}
-            <View style={styles.verticallySpaced}>
-              <Input
-                label={`Weight (${unit === 'imperial' ? 'lb' : 'kg'})`}
-                keyboardType="decimal-pad"
-                value={weightDisplay}
-                onChangeText={setWeightDisplay}
-                labelStyle={{ color: theme.text }}
-                inputStyle={{ color: theme.text }}
-                inputContainerStyle={{ borderBottomColor: theme.text }}
-              />
+            {/* Unit + Weight Row */}
+            <View style={[styles.verticallySpaced, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+                {/* Weight */}
+                <View style={[styles.verticallySpaced, {width: 150, }]}>
+                  <Input
+                    label={`Weight (${unit === 'imperial' ? 'lb' : 'kg'})`}
+                    keyboardType="decimal-pad"
+                    value={weightDisplay}
+                    onChangeText={setWeightDisplay}
+                    labelStyle={{ color: theme.text }}
+                    inputStyle={{ color: theme.text }}
+                    inputContainerStyle={{ borderBottomColor: theme.text }}
+                  />
+                </View>
+
+                {/* Unit preference */}
+                <View style={{ marginTop: 8, marginLeft: 10 }}>
+                  <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>Unit</Text>
+                  {unitChips}
+                </View>
             </View>
 
             {/* Height */}
@@ -506,7 +517,7 @@ export default function Account({ session }: { session: Session }) {
             />
 
             {/* Body Fat % */}
-            <View style={styles.verticallySpaced}>
+            <View style={[styles.verticallySpaced, {marginTop: 30}]}>
               <Input
                 label="Body Fat %"
                 keyboardType="decimal-pad"
