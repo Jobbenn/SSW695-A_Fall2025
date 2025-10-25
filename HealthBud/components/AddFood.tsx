@@ -7,6 +7,7 @@ import {
   FlatList,
   ActivityIndicator,
   useColorScheme,
+  TextInput,
 } from 'react-native';
 import SafeScreen from './SafeScreen';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -55,6 +56,13 @@ export default function AddFood() {
   const [loadingAll, setLoadingAll] = useState(false);
   const [errorRecent, setErrorRecent] = useState<string | null>(null);
   const [errorAll, setErrorAll] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query]);
 
   const loadRecent = useCallback(async () => {
     if (!userId) return;
@@ -70,11 +78,11 @@ export default function AddFood() {
     }
   }, [userId]);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (q?: string) => {
     setLoadingAll(true);
     setErrorAll(null);
     try {
-      const rows = await getFood({ limit: 200 });
+      const rows = await getFood({ limit: 200, search: q && q.length ? q : undefined });
       setAll(rows);
     } catch (e: any) {
       setErrorAll(e?.message || 'Failed to load foods');
@@ -95,6 +103,11 @@ export default function AddFood() {
     loadRecent();
     loadAll();
   }, [loadRecent, loadAll]);
+
+  useEffect(() => {
+    // keep Recent loaded once; just refetch All when the search changes
+    loadAll(debouncedQuery);
+  }, [debouncedQuery, loadAll]);
 
   const isLoading = tab === 'recent' ? loadingRecent : loadingAll;
   const err = tab === 'recent' ? errorRecent : errorAll;
@@ -144,6 +157,27 @@ export default function AddFood() {
     },
     [navigation, dateISO, userId]
   );
+
+  const filteredRecent = React.useMemo(() => {
+    if (!recent) return null;
+    if (!debouncedQuery) return recent;
+    const q = debouncedQuery.toLowerCase();
+    return recent.filter(r =>
+      (r.food.name || '').toLowerCase().includes(q) ||
+      (r.food.brand || '').toLowerCase().includes(q)
+    );
+  }, [recent, debouncedQuery]);
+
+  // Fallback client-side filter for "All" in case your API ignores `search`:
+  const filteredAll = React.useMemo(() => {
+    if (!all) return null;
+    if (!debouncedQuery) return all;
+    const q = debouncedQuery.toLowerCase();
+    return all.filter(f =>
+      (f.name || '').toLowerCase().includes(q) ||
+      (f.brand || '').toLowerCase().includes(q)
+    );
+  }, [all, debouncedQuery]);
 
   function caloriesForLastServings(food: { calories?: number | null; servings?: number | null }, lastServings?: number | null) {
     const baseCals = Number(food.calories ?? NaN);
@@ -222,6 +256,25 @@ export default function AddFood() {
         {/* Header (minimal) */}
         <View style={styles.header} />
 
+        {/* Search */}
+        <View style={[styles.searchWrap, { borderColor: theme.border, backgroundColor: theme.card ?? '#00000010' }]}>
+          <Ionicons name="search" size={16} color={theme.muted} style={{ marginRight: 8 }} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search name or brand"
+            placeholderTextColor={theme.muted}
+            style={[styles.searchInput, { color: theme.text }]}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+          {!!query && (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+            </Pressable>
+          )}
+        </View>
+
         {/* Tabs */}
         <View style={[styles.tabs, { borderColor: theme.border }]}>
           <Pressable
@@ -261,26 +314,30 @@ export default function AddFood() {
               <Text style={{ color: theme.muted }}>{err}</Text>
             </View>
           ) : tab === 'recent' ? (
-            !recent || recent.length === 0 ? (
+            !filteredRecent || filteredRecent.length === 0 ? (
               <View style={styles.center}>
-                <Text style={{ color: theme.muted }}>No recent foods yet.</Text>
+                <Text style={{ color: theme.muted }}>
+                  {debouncedQuery ? `No recent results for “${debouncedQuery}”.` : 'No recent foods yet.'}
+                </Text>
               </View>
             ) : (
               <FlatList
-                data={recent}
+                data={filteredRecent ?? []}
                 keyExtractor={(rf) => rf.food.id}
                 renderItem={renderRecentItem}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
                 ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
               />
             )
-          ) : !all || all.length === 0 ? (
+          ) : !filteredAll || filteredAll.length === 0 ? (
             <View style={styles.center}>
-              <Text style={{ color: theme.muted }}>No foods found.</Text>
+              <Text style={{ color: theme.muted }}>
+                {debouncedQuery ? `No matches for “${debouncedQuery}”.` : 'No foods found.'}
+              </Text>
             </View>
           ) : (
             <FlatList
-              data={all}
+              data={filteredAll ?? []}
               keyExtractor={(f) => f.id}
               renderItem={renderAllItem}
               contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
@@ -323,4 +380,19 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 15, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  searchWrap: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+  },
 });
