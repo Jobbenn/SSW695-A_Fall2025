@@ -1,5 +1,5 @@
 // declarations.d.ts
 declare module '*.csv' {
-  const content: number | string; // or `any` if you prefer
+  const content: any;
   export default content;
 }
