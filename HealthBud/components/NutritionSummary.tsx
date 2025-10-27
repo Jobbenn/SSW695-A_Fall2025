@@ -1,0 +1,708 @@
+import React, { useCallback, useEffect, useMemo, useState, ReactElement } from 'react';
+import { View, Text, StyleSheet, Dimensions, FlatList } from 'react-native';
+import Svg, { Circle, Line, Rect } from 'react-native-svg';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
+
+type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active' | 'athlete';
+type Gender = 'male' | 'female' | 'other';
+
+type Profile = {
+  age?: number | null;
+  gender?: Gender | null;
+  pregnant?: boolean | null;
+  lactating?: boolean | null;
+  weight_kg?: number | null;
+  height_cm?: number | null;
+  unit?: 'imperial' | 'metric' | null;
+  activity_level?: ActivityLevel | null;
+  body_fat_percent?: number | null;
+};
+
+type GoalMap = Record<string, number>;
+
+type TabKey = 'overview' | 'core' | 'vitamins' | 'minerals';
+
+const CARD1_MACROS = ['total_carbs', 'protein', 'total_fats'] as const;
+const CARD2_MORE_MACRO = ['omega_3', 'omega_6', 'fiber'] as const;
+const CARD2_MINIMIZE = ['cholesterol', 'trans_fats', 'saturated_fats', 'added_sugar'] as const;
+const CARD2_WATER = ['water'] as const;
+
+const CARD3_MICROS = [
+  'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+  'thiamin','riboflavin','niacin','vitamin_b6','folate',
+  'vitamin_b12','pantothenic_acid','biotin','choline',
+] as const;
+
+const CARD4_MICROS = [
+  'calcium','chromium','copper','fluoride','iodine','magnesium',
+  'manganese','molybdenum','phosphorus','selenium','zinc',
+  'potassium','sodium','chloride',
+] as const;
+
+const ALIASES: Record<string, string[]> = {
+  water: ['Total Water (L/d)', 'water_total'],
+  cholesterol: ['Dietary Cholesterol'],
+  fiber: ['Total Fiber (g/d)', 'dietary_fiber'],
+  total_carbs: ['carbs', 'carbohydrates', 'Carbohydrate', 'Carbohydrate (g/d)'],
+  protein: ['Protein', 'protein_total', 'Protein (g/d)'],
+  total_fats: ['Fat', 'fats', 'Fat (g/d)'],
+  trans_fats: ['trans_fat', 'trans', 'trans fatty acids'],
+  saturated_fats: ['saturated_fat', 'sat_fat', 'Saturated fatty acids'],
+  omega_3: [
+    'n-3 polyunsaturated fatty acids',
+    'n-3 polyunsaturated fatty acids (α-linolenic acid)',
+    'alpha_linolenic_acid',
+    'α-Linolenic Acid (g/d)',
+    'ala',
+  ],
+  omega_6: [
+    'n-6 polyunsaturated fatty acids',
+    'n-6 polyunsaturated fatty acids (linoleic acid)',
+    'linoleic_acid',
+    'Linoleic Acid (g/d)',
+    'la',
+  ],
+  added_sugar: ['added_sugars', 'sugars_added', 'Added sugars'],
+  vitamin_a: ['vit_a','vitamin_a_rae', 'Vitamin A (μg/d)'],
+  vitamin_c: ['vit_c','ascorbic_acid', 'Vitamin C (mg/d)'],
+  vitamin_d: ['vit_d','cholecalciferol', 'Vitamin D (μg/d)'],
+  vitamin_e: ['vit_e','alpha_tocopherol', 'Vitamin E (mg/d)'],
+  vitamin_k: ['vit_k','phylloquinone', 'Vitamin K (μg/d)'],
+  vitamin_b6: ['b6','pyridoxine', 'Vitamin B6 (mg/d)'],
+  vitamin_b12: ['b12','cobalamin', 'Vitamin B12 (μg/d)'],
+  pantothenic_acid: ['pantothenate', 'Pantothenic Acid (mg/d)'],
+  thiamin: ['Thiamin (mg/d)'],
+  riboflavin: ['Riboflavin (mg/d)'],
+  niacin: ['Niacin (mg/d)'],
+  folate: ['Folate (μg/d)'],
+  biotin: ['Biotin (μg/d)'],
+  choline: ['Choline (mg/d)'],
+  calcium: ['Calcium (mg/d)'],
+  chromium: ['Chromium (μg/d)'],
+  copper: ['Copper (μg/d)'],
+  fluoride: ['Fluoride (mg/d)'],
+  iodine: ['Iodine (μg/d)'],
+  magnesium: ['Magnesium (mg/d)'],
+  manganese: ['Manganese (mg/d)'],
+  molybdenum: ['Molybdenum (μg/d)'],
+  phosphorus: ['Phosphorus (mg/d)'],
+  selenium: ['Selenium (μg/d)'],
+  zinc: ['Zinc (μg/d)'],
+  potassium: ['Potassium (mg/d)'],
+  sodium: ['Sodium (mg/d)'],
+  chloride: ['Chloride (mg/d)'],
+};
+
+async function loadCsvText(mod: any): Promise<string> {
+  const asset = Asset.fromModule(mod);
+  if (!asset.localUri) await asset.downloadAsync();
+  const uri = asset.localUri || asset.uri;
+
+  return await FileSystem.readAsStringAsync(uri, { encoding: 'utf8' });
+}
+
+function stripBOM(s: string) {
+  return s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
+}
+
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      // handle escaped quotes ""
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      out.push(cur.trim());
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+function parseCsv(text: string): Array<Record<string, string>> {
+  const clean = stripBOM(text).replace(/\r\n/g, '\n').trim();
+  const lines = clean.split('\n').filter(l => l.length);
+  if (lines.length === 0) return [];
+  const headers = splitCsvLine(lines[0]).map(h => h.trim());
+  if (headers.length === 0) throw new Error('CSV has no headers');
+  return lines.slice(1).map(line => {
+    const cols = splitCsvLine(line);
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => (row[h] = (cols[i] ?? '').trim()));
+    return row;
+  });
+}
+
+async function getProfile(userId: string): Promise<Profile | null> {
+  try {
+    // @ts-ignore dynamic import to avoid circular deps
+    const { supabase } = await import('../lib/supabase');
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (error) throw error;
+    return data as Profile;
+  } catch {
+    return null;
+  }
+}
+
+function kgFrom(p: Profile){ return p?.weight_kg ?? null; }
+function cmFrom(p: Profile){ return p?.height_cm ?? null; }
+
+function mifflinStJeor(p: Profile): number | null {
+  const w = kgFrom(p), h = cmFrom(p), age = p?.age ?? null;
+  if (w == null || h == null || age == null) return null;
+  const s = p.gender === 'male' ? 5 : p.gender === 'female' ? -161 : -78;
+  return Math.max(800, Math.round(10*w + 6.25*h - 5*age + s));
+}
+function katchMcArdle(p: Profile): number | null {
+  const w = kgFrom(p), bf = p?.body_fat_percent ?? null;
+  if (w == null || bf == null) return null;
+  const lbm = w * (1 - bf/100);
+  return Math.max(800, Math.round(370 + 21.6*lbm));
+}
+function activityMultiplier(level?: ActivityLevel | null) {
+  switch (level) {
+    case 'sedentary': return 1.2;
+    case 'light': return 1.375;
+    case 'moderate': return 1.55;
+    case 'active': return 1.725;
+    case 'very_active': return 1.9;
+    case 'athlete': return 2.0;
+    default: return 1.2;
+  }
+}
+function calcCalorieGoal(p: Profile): number | null {
+  const bmr = p.body_fat_percent != null ? (katchMcArdle(p) ?? mifflinStJeor(p)) : mifflinStJeor(p);
+  if (bmr == null) return null;
+  return Math.round(bmr * activityMultiplier(p.activity_level ?? 'sedentary'));
+}
+
+function sumKey(items: any[], key: string): number {
+  let t = 0;
+  for (const it of items) {
+    const v = it[key] ?? it.food?.[key];
+    const n = Number(v);
+    if (Number.isFinite(n)) t += n;
+  }
+  return t;
+}
+function sumKeyWithAliases(items: any[], key: string): number {
+  const keys = [key, ...(ALIASES[key] || [])];
+  for (const k of keys) {
+    const s = sumKey(items, k);
+    if (s !== 0) return s;
+  }
+  return 0;
+}
+function pickRowForProfile(rows: Record<string,string>[], p: Profile) {
+  const age = p.age ?? 30;
+  const gender = (p.gender || 'other') as Gender;
+  const preg = !!p.pregnant;
+  const lact = !!p.lactating;
+  const scored = rows.map(r => {
+    const amin = Number(r.age_min ?? r.min_age ?? r.ageStart ?? '0');
+    const amax = Number(r.age_max ?? r.max_age ?? r.ageEnd ?? '200');
+    const ageOk = age >= amin && age <= amax;
+    const g = (r.gender || r.group || '').toLowerCase();
+    const genderOk =
+      g.includes('all') ||
+      (gender === 'male' && g.includes('male')) ||
+      (gender === 'female' && g.includes('female')) ||
+      (gender === 'other' && (g.includes('all') || g === ''));
+    const pregOk = !preg || g.includes('preg') || r.pregnant === '1';
+    const lactOk = !lact || g.includes('lact') || r.lactating === '1';
+    const score = (ageOk ? 2 : 0) + (genderOk ? 1 : 0) + (pregOk ? 1 : 0) + (lactOk ? 1 : 0);
+    return { r, score };
+  }).sort((a,b)=>b.score-a.score);
+  return scored[0]?.r ?? null;
+}
+function readNumeric(r: Record<string,string>, keys: string[], fb: number | null = null) {
+  for (const k of keys) {
+    const v = Number(r[k]);
+    if (Number.isFinite(v)) return v;
+  }
+  return fb;
+}
+
+// ---- helpers for "wide" RDA tables ----
+function toNum(v: any): number | null {
+  const n = Number(String(v).replace(/[, ]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Matches "19–30", "0.5–1", ">70" etc. (note: en-dash in the CSV)
+function ageBandIncludes(band: string, age: number): boolean {
+  const s = band.trim();
+  if (!s) return false;
+  if (s.startsWith('>')) {
+    const n = Number(s.slice(1));
+    return Number.isFinite(n) ? age > n : false;
+  }
+  const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*[–-]\s*([0-9]+(?:\.[0-9]+)?)$/);
+  if (!m) return false;
+  const lo = Number(m[1]), hi = Number(m[2]);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return false;
+  return age >= lo && age <= hi;
+}
+
+function lifeStageForProfile(p: Profile): 'Pregnancy' | 'Lactation' | 'Males' | 'Females' | 'Children' | 'Infants' {
+  if (p.pregnant) return 'Pregnancy';
+  if (p.lactating) return 'Lactation';
+  const age = p.age ?? 30;
+  if (age < 1) return 'Infants';
+  if (age < 9) return 'Children'; // 1–8 group is in “Children”
+  return (p.gender === 'female') ? 'Females' : 'Males';
+}
+
+function pickWideRdaRow(rows: Record<string, string>[], p: Profile): Record<string, string> | null {
+  const stage = lifeStageForProfile(p);
+  const age = p.age ?? 30;
+
+  // The CSV uses columns: Life Stage, Age (y), then nutrient columns
+  const filtered = rows.filter(r => (r['Life Stage'] || '').trim() === stage);
+  // Among those, choose the one whose Age (y) band contains the user's age
+  for (const r of filtered) {
+    const band = (r['Age (y)'] || '').trim();
+    if (band && ageBandIncludes(band, age)) return r;
+  }
+  // Fallback: if none match, try any row of that stage (last resort)
+  return filtered[0] ?? null;
+}
+
+// Given our canonical key (e.g., "vitamin_a"), pick the first header that exists in this row
+function headerForKeyInRow(k: string, row: Record<string,string>): string | null {
+  const candidates = [k, ...(ALIASES[k] || [])];
+  for (const c of candidates) {
+    if (c in row) return c;
+  }
+  return null;
+}
+
+// Parse a %kcal range like "20–35" to its midpoint (return null if not parseable)
+function midpointPct(s: string): number | null {
+  const m = (s || '').match(/^(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lo = Number(m[1]), hi = Number(m[2]);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  return (lo + hi) / 2;
+}
+
+async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calorieGoal: number | null } | null> {
+  try {
+    const reqRanges = require('../assets/data/rangesMacro.csv');
+    const reqMacro  = require('../assets/data/rdaMacro.csv');  // wide
+    const reqAdd    = require('../assets/data/additional.csv'); // text guidance
+    const reqMicro  = require('../assets/data/rdaMicro.csv');  // wide
+
+    const [rangesText, rdaMacroText, additionalText, rdaMicroText] = await Promise.all([
+      loadCsvText(reqRanges),
+      loadCsvText(reqMacro),
+      loadCsvText(reqAdd),
+      loadCsvText(reqMicro),
+    ]);
+
+    const rangesRows   = parseCsv(rangesText);   // columns: Children 1–3, 4–18, Adults (% kcal)
+    const rdaMacroRows = parseCsv(rdaMacroText); // wide: Life Stage, Age (y), nutrient cols
+    const additionalRows = parseCsv(additionalText);
+    const rdaMicroRows = parseCsv(rdaMicroText); // wide: Life Stage, Age (y), nutrient cols
+
+    const goals: GoalMap = {};
+    const calorieGoal = calcCalorieGoal(p);
+
+    // ---------- A) Macronutrient % ranges (protein, total_fats, total_carbs) ----------
+    // rangesMacro.csv uses age bands in its COLUMNS; pick the correct column, take midpoint %, convert to grams.
+    const age = p.age ?? 30;
+    const colName =
+      age < 1   ? null :
+      age < 4   ? 'Children, 1–3 y (% kcal)' :
+      age < 19  ? 'Children, 4–18 y (% kcal)' :
+                  'Adults (% kcal)';
+
+    const rangeRowByName = (needle: string) =>
+      rangesRows.find(r => (r['Macronutrient'] || '').toLowerCase() === needle.toLowerCase());
+
+    const spec: Array<{ key: 'protein'|'total_fats'|'total_carbs', macroKcalPerGram: 4|9, label: string }> = [
+      { key: 'total_fats',   macroKcalPerGram: 9, label: 'Fat' },
+      { key: 'total_carbs',  macroKcalPerGram: 4, label: 'Carbohydrate' },
+      { key: 'protein',      macroKcalPerGram: 4, label: 'Protein' },
+    ];
+
+    for (const { key, macroKcalPerGram, label } of spec) {
+      const row = rangeRowByName(label);
+      const pctStr = colName ? (row?.[colName] ?? '') : '';
+      const pct = midpointPct(pctStr);
+      if (pct != null && calorieGoal != null) {
+        const grams = Math.round((pct / 100) * calorieGoal / macroKcalPerGram);
+        goals[key] = grams;
+      } else {
+        console.warn('[NS] no % range for', key, 'col=', colName, 'row=', row);
+      }
+    }
+
+    // ---------- B) Other macros + water from rdaMacro (wide) ----------
+    // Choose the one row for this profile, then read columns.
+    const macroRow = pickWideRdaRow(rdaMacroRows, p);
+    if (!macroRow) console.warn('[NS] no matching life-stage row in rdaMacro');
+
+    for (const nutrient of [...CARD2_MORE_MACRO, ...CARD2_WATER]) {
+      if (!macroRow) continue;
+      const header = headerForKeyInRow(nutrient, macroRow);
+      const val = header ? toNum(macroRow[header]) : null;
+      if (val != null) goals[nutrient] = val;
+      else console.warn('[NS] no numeric rdaMacro for', nutrient, 'header=', header);
+    }
+
+    // ---------- C) “Minimize” guidance (text) ----------
+    // additional.csv is advisory text; there’s no numeric limit, so we *don’t* set numeric goals.
+    // (UI will still render the totals; goal will show —)
+    // If you later add numeric ULs, they’ll start showing automatically here.
+
+    // ---------- D) Micronutrients from rdaMicro (wide) ----------
+    const microRow = pickWideRdaRow(rdaMicroRows, p);
+    if (!microRow) console.warn('[NS] no matching life-stage row in rdaMicro');
+
+    for (const nutrient of [...CARD3_MICROS, ...CARD4_MICROS]) {
+      if (!microRow) continue;
+      const header = headerForKeyInRow(nutrient, microRow);
+      const val = header ? toNum(microRow[header]) : null;
+      if (val != null) goals[nutrient] = val;
+      else console.warn('[NS] no numeric rdaMicro for', nutrient, 'header=', header);
+    }
+
+    console.log('[NS] goals keys:', Object.keys(goals));
+    return { goals, calorieGoal };
+  } catch (err) {
+    console.error('[NS] buildGoalsForProfile failed:', err);
+    return null;
+  }
+}
+
+function MiniBar({ total, goal, label, innerWidth }: { total: number; goal?: number | null; label: string; innerWidth: number }) {
+  const width = Math.max(0, innerWidth); // card has 12px left+right padding
+  const height = 16;
+  const progress = Math.min(1, goal && goal > 0 ? total / goal : 0);
+  const fillW = Math.max(2, Math.round(width * progress));
+  return (
+    <View style={{ marginVertical: 6, width }}>
+      <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 12, fontWeight:'600' }}>{label}</Text>
+        <Text style={{ fontSize: 12, color:'#666' }}>{Math.round(total)} / {goal ?? '—'}</Text>
+      </View>
+      <View style={{ width, overflow: 'hidden' }}>
+        <Svg width={width} height={height}>
+          <Rect x={0} y={0} width={width} height={height} rx={8} fill="#EEE" />
+          <Rect x={0} y={0} width={fillW} height={height} rx={8} fill="#7CC4A0" />
+        </Svg>
+      </View>
+    </View>
+  );
+}
+
+function CalorieDonut({ kcalTotal, kcalGoal }: { kcalTotal: number; kcalGoal: number | null }) {
+  const size = 84, stroke = 10, r = (size - stroke) / 2, c = Math.PI * 2 * r;
+  const progress = kcalGoal && kcalGoal > 0 ? Math.min(1, kcalTotal / kcalGoal) : 0;
+  const seg = c * progress;
+  return (
+    <View style={{ alignItems:'center', justifyContent:'center' }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Circle cx={size/2} cy={size/2} r={r} stroke="#EEE" strokeWidth={stroke} fill="none"/>
+        {progress > 0 && (
+          <Circle cx={size/2} cy={size/2} r={r}
+            stroke="#5CC689" strokeWidth={stroke}
+            strokeDasharray={`${seg}, ${c - seg}`} strokeLinecap="round" fill="none"
+          />
+        )}
+      </Svg>
+      <View style={{ position:'absolute', alignItems:'center' }}>
+        <Text style={{ fontWeight:'800', fontSize:16 }}>{Math.round(kcalTotal)}</Text>
+        <Text style={{ fontSize:11, color:'#666' }}>{kcalGoal ? `of ${Math.round(kcalGoal)}` : '—'}</Text>
+      </View>
+    </View>
+  );
+}
+
+function prettyName(k: string) {
+  return k.replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase())
+          .replace('Vitamin B6','Vitamin B6')
+          .replace('Vitamin B12','Vitamin B12')
+          .replace('Pantothenic Acid','Pantothenic Acid');
+}
+
+const stylesNS = StyleSheet.create({
+  card: {
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  cardTitle: { fontWeight: '800', fontSize: 16, marginBottom: 6 },
+});
+
+function hasEnoughForCalories(p: Profile): boolean {
+  const hasKatch =
+    p.body_fat_percent != null &&
+    p.weight_kg != null &&
+    p.activity_level != null;
+
+  const hasMifflin =
+    p.age != null &&
+    p.gender != null &&
+    p.height_cm != null &&
+    p.weight_kg != null &&
+    p.activity_level != null;
+
+  return !!(hasKatch || hasMifflin);
+}
+
+export default function NutritionSummary({
+  items,
+  theme,
+  userId,
+  computeDisplayCalories,
+}: {
+  items: any[];
+  theme: any;
+  userId?: string;
+  computeDisplayCalories: (item: any) => number | null;
+}) {
+  // keep selection stable if tabs change
+  const [activeKey, setActiveKey] = useState<TabKey>('overview');
+  const [listWidth, setListWidth] = useState<number>(Dimensions.get('window').width);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [goals, setGoals] = useState<GoalMap>({});
+  const [calGoal, setCalGoal] = useState<number | null>(null);
+  const onLayout = useCallback((e: any) => {
+    const w = Math.round(e.nativeEvent.layout.width || 0);
+    if (w > 0 && w !== listWidth) setListWidth(w);
+  }, [listWidth]);
+  
+  const totals = useMemo<Record<string, number>>(() => {
+    const kcals = items.reduce((acc, it) => acc + (computeDisplayCalories(it) ?? 0), 0);
+    const macroTotals: Record<string, number> = {};
+
+    for (const k of [
+        ...CARD1_MACROS,
+        ...CARD2_MORE_MACRO,
+        ...CARD2_WATER,
+        ...CARD2_MINIMIZE,
+        ...CARD3_MICROS,
+        ...CARD4_MICROS,
+    ]) {
+        macroTotals[k] = sumKeyWithAliases(items, k);
+    }
+
+    // Make sure the result has an index signature
+    return { calories: kcals, ...macroTotals };
+  }, [items, computeDisplayCalories]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+
+        if (!userId) {
+          console.warn('[NutritionSummary] missing userId');
+          throw new Error('no user');
+        }
+
+        const profile = await getProfile(userId);
+        console.log('[NutritionSummary] loaded profile:', JSON.stringify(profile));
+
+        if (!profile) {
+          console.warn('[NutritionSummary] profile not found');
+          throw new Error('insufficient');
+        }
+
+        // Log which fields are missing (super handy)
+        const missing: string[] = [];
+        if (profile.weight_kg == null) missing.push('weight_kg');
+        if (profile.activity_level == null) missing.push('activity_level');
+        if (profile.body_fat_percent == null) {
+          // Only needed for Katch—log but don’t require if Mifflin is possible
+          missing.push('(optional) body_fat_percent');
+        }
+        if (profile.age == null) missing.push('(msj) age');
+        if (profile.gender == null) missing.push('(msj) gender');
+        if (profile.height_cm == null) missing.push('(msj) height_cm');
+        console.log('[NutritionSummary] profile missing fields:', missing.join(', ') || 'none');
+
+        if (!hasEnoughForCalories(profile)) {
+          console.warn('[NutritionSummary] not enough data for calorie goal (neither Katch nor Mifflin requirements met)');
+          throw new Error('insufficient');
+        }
+
+        const built = await buildGoalsForProfile(profile);
+        console.log('[NutritionSummary] goals built:', built ? Object.keys(built.goals).length : 'null');
+
+        if (!built) {
+          console.error('[NutritionSummary] buildGoalsForProfile returned null (CSV load/parse?)');
+          throw new Error('goals');
+        }
+        if (!mounted) return;
+
+        setGoals(built.goals);
+        setCalGoal(built.calorieGoal);
+        setError(null);
+      } catch (e: any) {
+        console.error('[NutritionSummary] error:', e?.message || e);
+        setError('Finish setting up your profile in settings to see your nutrition summary.');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
+  // --- build which cards are visible (SAFE to do before early returns) ---
+  const showCard2 = hasAnyData(
+    [...CARD2_MORE_MACRO, ...CARD2_WATER, ...CARD2_MINIMIZE],
+    totals,
+    goals
+  );
+  const showCard3 = hasAnyData(CARD3_MICROS, totals, goals);
+  const showCard4 = hasAnyData(CARD4_MICROS, totals, goals);
+  const cardPadding = 12;
+  const donutSize = 84;
+  const gapBetweenDonutAndBars = 16;
+
+  // width available for the bars on card 1: total card width - padding (12*2) - donut - gap
+  const barsWidthCard1 = Math.max(0, listWidth - (cardPadding * 2) - donutSize - gapBetweenDonutAndBars);
+  // for other cards: full card width minus padding
+  const barsWidthOther = Math.max(0, listWidth - (cardPadding * 2));
+
+  const cards = [
+    <View key="card1" style={{ padding: 12 }}>
+      <Text style={stylesNS.cardTitle}>Calories & Macros</Text>
+      <View style={{ flexDirection:'row', alignItems:'center', gap:gapBetweenDonutAndBars, marginTop:8 }}>
+        <CalorieDonut kcalTotal={totals.calories} kcalGoal={calGoal}/>
+        <View style={{ flex:1, minWidth: 0 }}>
+          <MiniBar label="Carbs (g)"   total={totals.total_carbs} goal={goals.total_carbs} innerWidth={barsWidthCard1}/>
+          <MiniBar label="Protein (g)" total={totals.protein}     goal={goals.protein}     innerWidth={barsWidthCard1}/>
+          <MiniBar label="Fat (g)"     total={totals.total_fats}  goal={goals.total_fats}  innerWidth={barsWidthCard1}/>
+        </View>
+      </View>
+    </View>,
+
+    <View key="card2" style={{ padding: cardPadding }}>
+      <Text style={stylesNS.cardTitle}>Essentials</Text>
+      {CARD2_MORE_MACRO.map(k => (
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+      ))}
+      {CARD2_WATER.map(k => (
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+      ))}
+      <View style={{ height: 6 }} />
+      {CARD2_MINIMIZE.map(k => (
+        <MiniBar key={k} label={prettyName(k) + ' (limit)'} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+      ))}
+    </View>,
+
+    <View key="card3" style={{ padding: cardPadding }}>
+      <Text style={stylesNS.cardTitle}>Micronutrients (Vitamins)</Text>
+      {CARD3_MICROS.map(k => (
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+      ))}
+    </View>,
+
+    <View key="card4" style={{ padding: cardPadding }}>
+      <Text style={stylesNS.cardTitle}>Micronutrients (Minerals)</Text>
+      {CARD4_MICROS.map(k => (
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+      ))}
+    </View>,
+  ];
+
+  const visibleCards = [
+    { key: 'overview' as const, label: 'Overview', node: cards[0] },
+    ...(showCard2 ? [{ key: 'core' as const, label: 'Core', node: cards[1] }] : []),
+    ...(showCard3 ? [{ key: 'vitamins' as const, label: 'Vitamins', node: cards[2] }] : []),
+    ...(showCard4 ? [{ key: 'minerals' as const, label: 'Minerals', node: cards[3] }] : []),
+  ] as const satisfies Array<{ key: TabKey; label: string; node: ReactElement }>;
+
+  // Stable list of keys for the effect dependency
+  const visibleKeys = useMemo<TabKey[]>(
+    () => visibleCards.map(v => v.key),
+    [visibleCards]
+  );
+
+  // IMPORTANT: this hook must be ABOVE any early returns
+  useEffect(() => {
+    if (!visibleKeys.includes(activeKey)) {
+      setActiveKey(visibleKeys[0]); // 'overview' is guaranteed present
+    }
+  }, [activeKey, visibleKeys]);
+
+  if (loading) return null;
+  if (error) {
+    return (
+      <View
+        style={[
+          stylesNS.card,
+          { width: '100%', alignSelf: 'stretch', backgroundColor: theme.card, borderColor: theme.border, marginBottom: 14 },
+        ]}
+      >
+        <Text style={{ color: theme.text, padding: 10, marginBottom: 14 }}>{error}</Text>
+      </View>
+    );
+  }
+
+  const contentWidth = Math.max(0, listWidth - 100);
+  function hasAnyData(keys: readonly string[], totals: Record<string, number>, goals: GoalMap) {
+    return keys.some(k => (totals[k] ?? 0) > 0 || goals[k] != null);
+  }
+
+  return (
+    <View style={{ marginTop: 8, marginBottom: 14 }} onLayout={onLayout}>
+      {/* Tabs */}
+      <View style={{ flexDirection:'row', gap:8, marginBottom: 8, flexWrap:'wrap' }}>
+        {visibleCards.map((t, i) => {
+          const active = t.key === activeKey;
+          return (
+            <Text
+              key={t.key}
+              onPress={() => setActiveKey(t.key)}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: active ? theme.text : 'transparent',
+                color: active ? theme.card : theme.text,
+                fontWeight: active ? '700' : '600',
+                overflow: 'hidden',
+              }}
+            >
+              {t.label}
+            </Text>
+          );
+        })}
+      </View>
+
+      {/* Active Card */}
+      <View
+        style={[
+          stylesNS.card,
+          {
+            width: '100%',
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        {visibleCards.find(v => v.key === activeKey)?.node}
+      </View>
+    </View>
+  );
+}

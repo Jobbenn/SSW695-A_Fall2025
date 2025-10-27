@@ -16,10 +16,13 @@ import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Swipeable } from 'react-native-gesture-handler';
-import Svg, { Circle } from 'react-native-svg';
-
+import Svg, { Circle, Line, Rect, G } from 'react-native-svg';
+import { Dimensions, ScrollView } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import { Asset } from 'expo-asset';
 import type { Food, FoodItem, Meal } from '../lib/foodTypes';
 import { getJoinedFoodItems, deleteFoodItem } from '../lib/foodApi';
+import NutritionSummary from '../components/NutritionSummary';
 
 function toISODate(d: Date) {
   const y = d.getFullYear();
@@ -184,7 +187,7 @@ function MacroDonut({
               cx={size / 2}
               cy={size / 2}
               r={r}
-              stroke="#5CC689"
+              stroke="#5ca4c6ff"
               strokeWidth={stroke}
               strokeDasharray={`${segCarb},${c - segCarb}`}
               strokeLinecap="butt"
@@ -257,9 +260,9 @@ function ItemRow({
   const unit = pluralizeUnit(rawUnit, servings);
   const servingsText =
     rawUnit && servings != null
-      ? `${servings} ${unit}`
+      ? `${servings} ${Number(servings) > 1 ? 'Servings,' : 'Serving,'} ${unit}`
       : servings != null
-      ? `${servings}`
+      ? `${servings} ${Number(servings) > 1 ? 'Servings' : 'Serving'}`
       : '—';
 
   const calories = computeDisplayCalories(item);
@@ -478,6 +481,14 @@ export default function Diary() {
 
         {/* Content */}
         <View style={[styles.content, { paddingHorizontal: 16 }]}>
+          <View style={{ marginHorizontal: -16 }}>
+            <NutritionSummary
+              items={items}
+              theme={theme}
+              userId={userId}
+              computeDisplayCalories={computeDisplayCalories}
+            />
+          </View>
           <MealSection title="Breakfast" items={grouped.breakfast} theme={theme} onEdit={onEdit} onDelete={onDelete} />
           <MealSection title="Lunch" items={grouped.lunch} theme={theme} onEdit={onEdit} onDelete={onDelete} />
           <MealSection title="Dinner" items={grouped.dinner} theme={theme} onEdit={onEdit} onDelete={onDelete} />
