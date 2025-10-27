@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, ReactElement } from 'react';
 import { View, Text, StyleSheet, Dimensions, FlatList } from 'react-native';
-import Svg, { Circle, Line, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Polygon, Rect } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 
@@ -88,10 +88,63 @@ const ALIASES: Record<string, string[]> = {
   molybdenum: ['Molybdenum (μg/d)'],
   phosphorus: ['Phosphorus (mg/d)'],
   selenium: ['Selenium (μg/d)'],
-  zinc: ['Zinc (μg/d)'],
+  zinc: ['Zinc (mg/d)'],
   potassium: ['Potassium (mg/d)'],
   sodium: ['Sodium (mg/d)'],
   chloride: ['Chloride (mg/d)'],
+};
+
+// Canonical display units for each key
+const UNITS: Record<string, string> = {
+  // energy
+  calories: 'kcal',
+
+  // macros
+  total_carbs: 'g',
+  protein: 'g',
+  total_fats: 'g',
+  fiber: 'g',
+  omega_3: 'g',
+  omega_6: 'g',
+  added_sugar: 'g',
+  trans_fats: 'g',
+  saturated_fats: 'g',
+  water: 'L',
+
+  // vitamins
+  vitamin_a: 'µg',
+  vitamin_c: 'mg',
+  vitamin_d: 'µg',
+  vitamin_e: 'mg',
+  vitamin_k: 'µg',
+  thiamin: 'mg',
+  riboflavin: 'mg',
+  niacin: 'mg',
+  vitamin_b6: 'mg',
+  folate: 'µg',
+  vitamin_b12: 'µg',
+  pantothenic_acid: 'mg',
+  biotin: 'µg',
+  choline: 'mg',
+
+  // minerals
+  calcium: 'mg',
+  chromium: 'µg',
+  copper: 'µg',
+  fluoride: 'mg',
+  iodine: 'µg',
+  magnesium: 'mg',
+  manganese: 'mg',
+  molybdenum: 'µg',
+  phosphorus: 'mg',
+  selenium: 'µg',
+  zinc: 'mg',
+  potassium: 'mg',
+  sodium: 'mg',
+  chloride: 'mg',
+
+  // “limit” ones that sometimes lack a numeric target
+  cholesterol: 'mg',
 };
 
 async function loadCsvText(mod: any): Promise<string> {
@@ -385,21 +438,171 @@ async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calor
   }
 }
 
-function MiniBar({ total, goal, label, innerWidth }: { total: number; goal?: number | null; label: string; innerWidth: number }) {
-  const width = Math.max(0, innerWidth); // card has 12px left+right padding
-  const height = 16;
-  const progress = Math.min(1, goal && goal > 0 ? total / goal : 0);
-  const fillW = Math.max(2, Math.round(width * progress));
+function TabIcon({ kind, active }: { kind: 'dot' | 'square' | 'triangle' | 'diamond'; active: boolean }) {
+  const size = 14;
+  const stroke = active ? 'white' : '#999';
+  const fill = active ? 'white' : 'transparent';
+
+  switch (kind) {
+    case 'dot':
+      return (
+        <Svg width={size} height={size}>
+          <Circle cx={size / 2} cy={size / 2} r={size / 4} fill={fill} stroke={stroke} strokeWidth={2} />
+        </Svg>
+      );
+
+    case 'square':
+      return (
+        <Svg width={size} height={size}>
+          <Rect x={3} y={3} width={size - 6} height={size - 6} rx={3} fill={fill} stroke={stroke} strokeWidth={2} />
+        </Svg>
+      );
+
+    case 'triangle':
+      return (
+        <Svg width={size} height={size}>
+          {/* fill polygon for triangle */}
+          <Polygon
+            points={`${size / 2},3 ${size - 3},${size - 3} 3,${size - 3}`}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={2}
+          />
+        </Svg>
+      );
+
+    case 'diamond':
+      return (
+        <Svg width={size} height={size}>
+          {/* fill polygon for diamond */}
+          <Polygon
+            points={`${size / 2},2 ${size - 2},${size / 2} ${size / 2},${size - 2} 2,${size / 2}`}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={2}
+          />
+        </Svg>
+      );
+  }
+}
+
+// Reds for "limit" nutrients
+const RED = '#E85C5C';
+const DEEP_RED = '#B71C1C';
+
+// Compute dynamic limit + color rules for the "minimize" nutrients
+function limitSpec(
+  key: 'added_sugar' | 'saturated_fats' | 'trans_fats' | 'cholesterol',
+  totals: Record<string, number>,
+  calGoal: number | null
+): { goal: number | null; color: string; reverse: boolean; advisory: boolean } {
+  // default return
+  let goal: number | null = null;
+  let color = RED;
+  const reverse = true;
+
+  if (key === 'added_sugar') {
+    // 10% kcal from added sugar (4 kcal/g)
+    goal = calGoal != null ? (0.10 * calGoal) / 4 : null;
+    if (calGoal != null && calGoal > 0) {
+      const pct = (totals.added_sugar * 4) / calGoal; // fraction of kcal
+      color = pct <= 0.05 ? RED : DEEP_RED; // 0–5% red, >5–10% deep red
+    } else {
+      // if we can't compute, keep red
+      color = RED;
+    }
+  } else if (key === 'saturated_fats') {
+    // 10% kcal from sat fat (9 kcal/g)
+    goal = calGoal != null ? (0.10 * calGoal) / 9 : null;
+    if (calGoal != null && calGoal > 0) {
+      const pct = (totals.saturated_fats * 9) / calGoal;
+      color = pct <= 0.06 ? RED : DEEP_RED; // 0–6% red, >6–10% deep red
+    } else {
+      color = RED;
+    }
+  } else if (key === 'trans_fats') {
+    // 1% kcal from trans fat (9 kcal/g) – always red
+    goal = calGoal != null ? (0.01 * calGoal) / 9 : null;
+    color = RED;
+  } else if (key === 'cholesterol') {
+    // fixed 300 mg; 0–200 red, >200–300 deep red
+    goal = 300;
+    const tot = totals.cholesterol ?? 0;
+    color = tot <= 200 ? RED : DEEP_RED;
+  }
+
+  return { goal, color, reverse, advisory: goal == null };
+}
+
+function MiniBar({
+  total,
+  goal,
+  label,
+  innerWidth,
+  unit,
+  advisory = false, // if true, show total + unit only and no progress fill
+  reverse = false,
+  fillColor = '#7CC4A0',
+}: {
+  total: number;
+  goal?: number | null;
+  label: string;
+  innerWidth: number;
+  unit?: string;
+  advisory?: boolean;
+  reverse?: boolean;
+  fillColor?: string;
+}) {
+  const width = Math.max(0, innerWidth);
+  const height = 12;
+
+  const hasGoal = !advisory && goal != null && Number(goal) > 0;
+  const progress = hasGoal ? Math.min(1, total / Number(goal)) : 0;
+  const fillW = hasGoal ? Math.max(2, Math.round(width * progress)) : 0;
+
+  // replace your fmt + rightText with:
+  const fmt = (n: number, unit?: string) => {
+    if (!Number.isFinite(n)) return '—';
+    const abs = Math.abs(n);
+    const dp = abs < 1 ? 2 : abs < 10 ? 1 : 0; // 0.50, 2.5, 12
+    return `${n.toFixed(dp)}${unit ? ` ${unit}` : ''}`;
+  };
+
+  const rightText = hasGoal
+    ? `${fmt(total, unit)} / ${fmt(Number(goal), unit)}`
+    : `${fmt(total, unit)}${advisory ? ' • no numeric limit' : ''}`;
+
+  const xPos = reverse ? Math.max(0, width - fillW) : 0;
+
   return (
     <View style={{ marginVertical: 6, width }}>
-      <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom: 4 }}>
-        <Text style={{ fontSize: 12, fontWeight:'600' }}>{label}</Text>
-        <Text style={{ fontSize: 12, color:'#666' }}>{Math.round(total)} / {goal ?? '—'}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 12, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ fontSize: 12, color: '#666' }}>{rightText}</Text>
       </View>
+
       <View style={{ width, overflow: 'hidden' }}>
         <Svg width={width} height={height}>
+          {/* track */}
           <Rect x={0} y={0} width={width} height={height} rx={8} fill="#EEE" />
-          <Rect x={0} y={0} width={fillW} height={height} rx={8} fill="#7CC4A0" />
+          {/* fill (hidden if advisory or no goal) */}
+          {hasGoal && (
+            <Rect x={xPos} y={0} width={fillW} height={height} rx={6} fill={fillColor} />
+          )}
+          {/* advisory outline */}
+          {advisory && (
+            <Rect
+              x={0.5}
+              y={0.5}
+              width={width - 1}
+              height={height - 1}
+              rx={8}
+              fill="none"
+              stroke="#BBB"
+              strokeWidth={1}
+              strokeDasharray="4 4"
+            />
+          )}
         </Svg>
       </View>
     </View>
@@ -587,38 +790,53 @@ export default function NutritionSummary({
       <View style={{ flexDirection:'row', alignItems:'center', gap:gapBetweenDonutAndBars, marginTop:8 }}>
         <CalorieDonut kcalTotal={totals.calories} kcalGoal={calGoal}/>
         <View style={{ flex:1, minWidth: 0 }}>
-          <MiniBar label="Carbs (g)"   total={totals.total_carbs} goal={goals.total_carbs} innerWidth={barsWidthCard1}/>
-          <MiniBar label="Protein (g)" total={totals.protein}     goal={goals.protein}     innerWidth={barsWidthCard1}/>
-          <MiniBar label="Fat (g)"     total={totals.total_fats}  goal={goals.total_fats}  innerWidth={barsWidthCard1}/>
+          <MiniBar label="Carbs (g)"   total={totals.total_carbs} goal={goals.total_carbs} innerWidth={barsWidthCard1} unit={UNITS.total_carbs}/>
+          <MiniBar label="Protein (g)" total={totals.protein}     goal={goals.protein}     innerWidth={barsWidthCard1} unit={UNITS.protein}/>
+          <MiniBar label="Fat (g)"     total={totals.total_fats}  goal={goals.total_fats}  innerWidth={barsWidthCard1} unit={UNITS.total_fats}/>
         </View>
       </View>
     </View>,
 
     <View key="card2" style={{ padding: cardPadding }}>
-      <Text style={stylesNS.cardTitle}>Essentials</Text>
-      {CARD2_MORE_MACRO.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
-      ))}
+      <Text style={stylesNS.cardTitle}>Essentials & Limits</Text>
       {CARD2_WATER.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
+      ))}
+      {CARD2_MORE_MACRO.map(k => (
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
       ))}
       <View style={{ height: 6 }} />
-      {CARD2_MINIMIZE.map(k => (
-        <MiniBar key={k} label={prettyName(k) + ' (limit)'} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
-      ))}
+      {CARD2_MINIMIZE.map(k => {
+      // dynamic goal + color + reverse fill
+      const spec = limitSpec(k as any, totals, calGoal);
+      const goalToUse = spec.goal ?? goals[k]; // if we couldn't compute (no calGoal), fall back to any table value
+      return (
+        <MiniBar
+          key={k}
+          label={prettyName(k) + ' (limit)'}
+          total={totals[k]}
+          goal={goalToUse}
+          innerWidth={barsWidthOther}
+          unit={UNITS[k]}
+          reverse={spec.reverse}
+          fillColor={spec.color}
+          advisory={goalToUse == null ? true : false}
+        />
+      );
+    })}
     </View>,
 
     <View key="card3" style={{ padding: cardPadding }}>
       <Text style={stylesNS.cardTitle}>Micronutrients (Vitamins)</Text>
       {CARD3_MICROS.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
       ))}
     </View>,
 
     <View key="card4" style={{ padding: cardPadding }}>
       <Text style={stylesNS.cardTitle}>Micronutrients (Minerals)</Text>
       {CARD4_MICROS.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther}/>
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
       ))}
     </View>,
   ];
@@ -663,15 +881,23 @@ export default function NutritionSummary({
   }
 
   return (
-    <View style={{ marginTop: 8, marginBottom: 14 }} onLayout={onLayout}>
+    <View style={{ marginTop: 8, marginBottom: 14, marginHorizontal: 16, alignItems: 'center' }} onLayout={onLayout}>
       {/* Tabs */}
       <View style={{ flexDirection:'row', gap:8, marginBottom: 8, flexWrap:'wrap' }}>
-        {visibleCards.map((t, i) => {
+        {visibleCards.map((t) => {
           const active = t.key === activeKey;
+          // map a shape to each tab
+          const kind =
+            t.key === 'overview' ? 'dot' :
+            t.key === 'core' ? 'square' :
+            t.key === 'vitamins' ? 'triangle' :
+            'diamond';
+
           return (
-            <Text
+            <View
               key={t.key}
-              onPress={() => setActiveKey(t.key)}
+              accessibilityRole="button"
+              accessibilityLabel={t.label}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 8,
@@ -679,13 +905,12 @@ export default function NutritionSummary({
                 borderWidth: 1,
                 borderColor: theme.border,
                 backgroundColor: active ? theme.text : 'transparent',
-                color: active ? theme.card : theme.text,
-                fontWeight: active ? '700' : '600',
-                overflow: 'hidden',
               }}
+              onStartShouldSetResponder={() => true}
+              onResponderRelease={() => setActiveKey(t.key)}
             >
-              {t.label}
-            </Text>
+              <TabIcon kind={kind as any} active={active} />
+            </View>
           );
         })}
       </View>

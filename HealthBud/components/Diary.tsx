@@ -24,6 +24,21 @@ import type { Food, FoodItem, Meal } from '../lib/foodTypes';
 import { getJoinedFoodItems, deleteFoodItem } from '../lib/foodApi';
 import NutritionSummary from '../components/NutritionSummary';
 
+const USER_TZ = 'America/New_York';
+
+function ymdInTZ(d: Date, tz: string): string {
+  // zero-padded YYYY-MM-DD in the target TZ
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const map: any = {};
+  parts.forEach(p => (map[p.type] = p.value));
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
 function toISODate(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -345,6 +360,11 @@ export default function Diary() {
   const [showPicker, setShowPicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
   const [dayNavHeight, setDayNavHeight] = useState(0);
+  const todayYMD = useMemo(() => ymdInTZ(new Date(), USER_TZ), []);
+  const canGoNext = useMemo(() => {
+    // allow going next only if current date (in NY) is before today's date (in NY)
+    return ymdInTZ(date, USER_TZ) < todayYMD;
+  }, [date, todayYMD]);
 
   const [items, setItems] = useState<Joined[]>([]);
   const [loading, setLoading] = useState(false);
@@ -363,10 +383,11 @@ export default function Diary() {
   }, [date]);
 
   const goNext = useCallback(() => {
+    if (!canGoNext) return;
     const d = new Date(date);
     d.setDate(d.getDate() + 1);
     setDate(d);
-  }, [date]);
+  }, [date, canGoNext]);
 
   const onDatePress = useCallback(() => {
     setTempDate(date);
@@ -375,13 +396,13 @@ export default function Diary() {
 
   const onPickerChange = useCallback((e: DateTimePickerEvent, newDate?: Date) => {
     if (!newDate) return;
-    setTempDate(newDate);
-  }, []);
-
-  const onConfirm = useCallback(() => {
-    if (tempDate) setDate(tempDate);
-    setShowPicker(false);
-  }, [tempDate]);
+    // If user picks a future day in NY timezone, clamp to "today"
+    if (ymdInTZ(newDate, USER_TZ) > todayYMD) {
+      setTempDate(new Date()); // any time today; we compare by YMD later
+    } else {
+      setTempDate(newDate);
+    }
+  }, [todayYMD]);
 
   const dismissPicker = useCallback(() => setShowPicker(false), []);
 
@@ -457,8 +478,12 @@ export default function Diary() {
             <Text style={[styles.dateText, { color: theme.text }]}>{pretty}</Text>
             <Ionicons name="calendar-outline" size={16} color={theme.text} style={{ marginLeft: 6 }} />
           </Pressable>
-
-          <Pressable onPress={goNext} hitSlop={10} style={styles.arrow}>
+          <Pressable
+            onPress={goNext}
+            disabled={!canGoNext}
+            hitSlop={10}
+            style={[styles.arrow, !canGoNext && { opacity: 0.35 }]}
+          >
             <Ionicons name="chevron-forward" size={22} color={theme.text} />
           </Pressable>
         </View>
@@ -516,17 +541,8 @@ export default function Diary() {
                   display={Platform.select({ ios: 'inline', android: 'spinner' })}
                   onChange={onPickerChange}
                   themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
+                  maximumDate={new Date()} // device-TZ guard; logic above enforces NY-TZ
                 />
-
-                <View style={styles.popoverFooter}>
-                  <Pressable
-                    onPress={onConfirm}
-                    style={({ pressed }) => [styles.confirmBtn, { opacity: pressed ? 0.7 : 1 }]}
-                  >
-                    <Text style={styles.confirmText}>Confirm</Text>
-                    <Ionicons name="checkmark-circle" size={18} color="#fff" style={{ marginLeft: 6 }} />
-                  </Pressable>
-                </View>
               </View>
             </View>
           </View>

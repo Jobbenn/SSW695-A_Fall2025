@@ -1,6 +1,8 @@
 #### Explanation on Data Sourcing
 For the __Recommended Dietary Allowances and Adequate Intakes__ (vitamins, Elements, Water, Macronutrients), the __Tolerable Upper Intake Levels__ (vitamins, minerals), the __Acceptable Macronutrient Distribution Ranges__, and the __Additional Macronutrient Recommendations__; two primary sources were used _(as specified below)_. Note that newer data _(from the 2011 publication)_ and data that was filled in _(non-NULL)_ was preferred when combining sources.
 
+For nutrients where the Institute of Medicine did not specify quantitative upper limits—namely added sugars, saturated fats, trans fats, and cholesterol—guidance values were derived from leading public health authorities. Specifically, limits follow recommendations from the U.S. Dietary Guidelines for Americans (2020–2025), the American Heart Association (AHA), and the World Health Organization (WHO). These sources collectively advise limiting added sugars and saturated fats to less than 10% of total daily calories, trans fats to less than 1% (ideally 0 g), and cholesterol to approximately 300 mg per day (≤ 200 mg for individuals with elevated cardiovascular risk). These values were adopted to provide practical and evidence-based upper thresholds for “limit” nutrients.
+
 #### Works Cited
 Institute of Medicine (US) Committee to Review Dietary Reference Intakes for Vitamin D and Calcium; Ross AC, Taylor CL, Yaktine AL, et al., editors. Dietary Reference Intakes for Calcium and Vitamin D. Washington (DC): National Academies Press (US); 2011. Summary Tables. Available from: https://www.ncbi.nlm.nih.gov/books/NBK56068/
 
