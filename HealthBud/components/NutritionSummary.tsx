@@ -393,7 +393,8 @@ async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calor
       const pctStr = colName ? (row?.[colName] ?? '') : '';
       const pct = midpointPct(pctStr);
       if (pct != null && calorieGoal != null) {
-        const grams = Math.round((pct / 100) * calorieGoal / macroKcalPerGram);
+        const raw = (pct / 100) * calorieGoal / macroKcalPerGram;
+        const grams = Math.round(raw * 10) / 10; // keep one decimal
         goals[key] = grams;
       } else {
         console.warn('[NS] no % range for', key, 'col=', colName, 'row=', row);
@@ -489,6 +490,8 @@ function TabIcon({ kind, active }: { kind: 'dot' | 'square' | 'triangle' | 'diam
 // Reds for "limit" nutrients
 const RED = '#E85C5C';
 const DEEP_RED = '#B71C1C';
+const NORMAL_GREEN = '#7CC4A0';
+const DEEP_GREEN_OK = '#1B7F57';
 
 // Compute dynamic limit + color rules for the "minimize" nutrients
 function limitSpec(
@@ -542,7 +545,7 @@ function MiniBar({
   unit,
   advisory = false, // if true, show total + unit only and no progress fill
   reverse = false,
-  fillColor = '#7CC4A0',
+  fillColor = NORMAL_GREEN,
 }: {
   total: number;
   goal?: number | null;
@@ -560,11 +563,14 @@ function MiniBar({
   const progress = hasGoal ? Math.min(1, total / Number(goal)) : 0;
   const fillW = hasGoal ? Math.max(2, Math.round(width * progress)) : 0;
 
-  // replace your fmt + rightText with:
+  const reached = hasGoal && total >= Number(goal) - 1e-6;
+  const barColor = reached ? DEEP_GREEN_OK : fillColor;
+
+  // inside MiniBar (replace the existing fmt)
   const fmt = (n: number, unit?: string) => {
     if (!Number.isFinite(n)) return '—';
-    const abs = Math.abs(n);
-    const dp = abs < 1 ? 2 : abs < 10 ? 1 : 0; // 0.50, 2.5, 12
+    const hasFraction = Math.abs(n - Math.trunc(n)) > 1e-6;
+    const dp = hasFraction ? (Math.abs(n) < 1 ? 2 : 1) : 0;
     return `${n.toFixed(dp)}${unit ? ` ${unit}` : ''}`;
   };
 
@@ -587,7 +593,7 @@ function MiniBar({
           <Rect x={0} y={0} width={width} height={height} rx={8} fill="#EEE" />
           {/* fill (hidden if advisory or no goal) */}
           {hasGoal && (
-            <Rect x={xPos} y={0} width={fillW} height={height} rx={6} fill={fillColor} />
+            <Rect x={xPos} y={0} width={fillW} height={height} rx={6} fill={barColor} />
           )}
           {/* advisory outline */}
           {advisory && (
