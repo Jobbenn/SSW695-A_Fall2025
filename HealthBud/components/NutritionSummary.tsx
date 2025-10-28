@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Dimensions, FlatList } from 'react-native';
 import Svg, { Circle, Line, Polygon, Rect } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
+import { useFocusEffect } from '@react-navigation/native';
 
 type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active' | 'athlete';
 type Gender = 'male' | 'female' | 'other';
@@ -17,9 +18,17 @@ type Profile = {
   unit?: 'imperial' | 'metric' | null;
   activity_level?: ActivityLevel | null;
   body_fat_percent?: number | null;
+  goal?: number | null;
 };
 
-type GoalMap = Record<string, number>;
+export type GoalMap = Record<string, number>;
+
+type OnComputedPayload = {
+  totals: Record<string, number>;
+  goals: GoalMap;
+  calorieGoal: number | null;
+  goalMode: 'lose' | 'gain' | 'maintain';
+};
 
 type TabKey = 'overview' | 'core' | 'vitamins' | 'minerals';
 
@@ -232,10 +241,20 @@ function activityMultiplier(level?: ActivityLevel | null) {
     default: return 1.2;
   }
 }
+
 function calcCalorieGoal(p: Profile): number | null {
   const bmr = p.body_fat_percent != null ? (katchMcArdle(p) ?? mifflinStJeor(p)) : mifflinStJeor(p);
   if (bmr == null) return null;
-  return Math.round(bmr * activityMultiplier(p.activity_level ?? 'sedentary'));
+
+  const tdee = Math.round(bmr * activityMultiplier(p.activity_level ?? 'sedentary'));
+
+  // Goal is a rate multiplier where 1.0 ≈ ±500 kcal/day
+  const delta = Math.round((p.goal ?? 0) * 500);
+  const adjusted = tdee + delta;
+
+  // ---- HARD CAP (double safety) ----
+  const minCal = p.gender === 'male' ? 1500 : 1200; // 'female' → 1200; others default to 1200
+  return Math.max(minCal, adjusted);
 }
 
 function sumKey(items: any[], key: string): number {
@@ -254,35 +273,6 @@ function sumKeyWithAliases(items: any[], key: string): number {
     if (s !== 0) return s;
   }
   return 0;
-}
-function pickRowForProfile(rows: Record<string,string>[], p: Profile) {
-  const age = p.age ?? 30;
-  const gender = (p.gender || 'other') as Gender;
-  const preg = !!p.pregnant;
-  const lact = !!p.lactating;
-  const scored = rows.map(r => {
-    const amin = Number(r.age_min ?? r.min_age ?? r.ageStart ?? '0');
-    const amax = Number(r.age_max ?? r.max_age ?? r.ageEnd ?? '200');
-    const ageOk = age >= amin && age <= amax;
-    const g = (r.gender || r.group || '').toLowerCase();
-    const genderOk =
-      g.includes('all') ||
-      (gender === 'male' && g.includes('male')) ||
-      (gender === 'female' && g.includes('female')) ||
-      (gender === 'other' && (g.includes('all') || g === ''));
-    const pregOk = !preg || g.includes('preg') || r.pregnant === '1';
-    const lactOk = !lact || g.includes('lact') || r.lactating === '1';
-    const score = (ageOk ? 2 : 0) + (genderOk ? 1 : 0) + (pregOk ? 1 : 0) + (lactOk ? 1 : 0);
-    return { r, score };
-  }).sort((a,b)=>b.score-a.score);
-  return scored[0]?.r ?? null;
-}
-function readNumeric(r: Record<string,string>, keys: string[], fb: number | null = null) {
-  for (const k of keys) {
-    const v = Number(r[k]);
-    if (Number.isFinite(v)) return v;
-  }
-  return fb;
 }
 
 // ---- helpers for "wide" RDA tables ----
@@ -492,6 +482,8 @@ const RED = '#E85C5C';
 const DEEP_RED = '#B71C1C';
 const NORMAL_GREEN = '#7CC4A0';
 const DEEP_GREEN_OK = '#1B7F57';
+const YELLOW = '#F4D35E';
+const ORANGE = '#F6A04D';
 
 // Compute dynamic limit + color rules for the "minimize" nutrients
 function limitSpec(
@@ -543,7 +535,7 @@ function MiniBar({
   label,
   innerWidth,
   unit,
-  advisory = false, // if true, show total + unit only and no progress fill
+  advisory = false,
   reverse = false,
   fillColor = NORMAL_GREEN,
 }: {
@@ -615,18 +607,72 @@ function MiniBar({
   );
 }
 
-function CalorieDonut({ kcalTotal, kcalGoal }: { kcalTotal: number; kcalGoal: number | null }) {
+function donutColor(
+  kcalTotal: number,
+  kcalGoal: number | null,
+  mode: 'lose' | 'gain' | 'maintain'
+): string {
+  if (!kcalGoal || kcalGoal <= 0) return NORMAL_GREEN;
+  const r = kcalTotal / kcalGoal;
+
+  if (mode === 'lose') {
+    // deep green when goal is reached and within 5% below goal
+    if (r <= 1 && r >= 0.95) return DEEP_GREEN_OK;
+    // green when within 10% of goal kcal and anything below
+    if (r <= 1.10) return NORMAL_GREEN;
+    // >10–15% above → yellow; >15–20% → orange; >20–25% → red; >25% → deep red
+    if (r <= 1.15) return YELLOW;
+    if (r <= 1.20) return ORANGE;
+    if (r <= 1.25) return RED;
+    return DEEP_RED;
+  }
+
+  if (mode === 'gain') {
+    // deep green when goal is reached and within 5% above goal
+    if (r >= 1 && r <= 1.05) return DEEP_GREEN_OK;
+    // green when within 10% of goal kcal and anything above
+    if (r >= 0.90) return NORMAL_GREEN;
+    // below goal: >10–15% → yellow; >15–20% → orange; >20–25% → red; >25% → deep red
+    if (r >= 0.85) return YELLOW;      // 0.85–0.90
+    if (r >= 0.80) return ORANGE;      // 0.80–0.85
+    if (r >= 0.75) return RED;         // 0.75–0.80
+    return DEEP_RED;                   // <0.75
+  }
+
+  // maintain
+  // deep green when within 10% of goal; green otherwise
+  if (r >= 0.90 && r <= 1.10) return DEEP_GREEN_OK;
+  return NORMAL_GREEN;
+}
+
+function CalorieDonut({
+  kcalTotal,
+  kcalGoal,
+  mode,
+}: {
+  kcalTotal: number;
+  kcalGoal: number | null;
+  mode: 'lose' | 'gain' | 'maintain';
+}) {
   const size = 84, stroke = 10, r = (size - stroke) / 2, c = Math.PI * 2 * r;
   const progress = kcalGoal && kcalGoal > 0 ? Math.min(1, kcalTotal / kcalGoal) : 0;
   const seg = c * progress;
+  const strokeColor = donutColor(kcalTotal, kcalGoal, mode);
+
   return (
     <View style={{ alignItems:'center', justifyContent:'center' }}>
       <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={size/2} cy={size/2} r={r} stroke="#EEE" strokeWidth={stroke} fill="none"/>
         {progress > 0 && (
-          <Circle cx={size/2} cy={size/2} r={r}
-            stroke="#5CC689" strokeWidth={stroke}
-            strokeDasharray={`${seg}, ${c - seg}`} strokeLinecap="round" fill="none"
+          <Circle
+            cx={size/2}
+            cy={size/2}
+            r={r}
+            stroke={strokeColor}          // <-- was hard-coded green
+            strokeWidth={stroke}
+            strokeDasharray={`${seg}, ${c - seg}`}
+            strokeLinecap="round"
+            fill="none"
           />
         )}
       </Svg>
@@ -675,11 +721,13 @@ export default function NutritionSummary({
   theme,
   userId,
   computeDisplayCalories,
+  onComputed, // <-- NEW (optional)
 }: {
   items: any[];
   theme: any;
   userId?: string;
   computeDisplayCalories: (item: any) => number | null;
+  onComputed?: (data: OnComputedPayload) => void;
 }) {
   // keep selection stable if tabs change
   const [activeKey, setActiveKey] = useState<TabKey>('overview');
@@ -688,11 +736,12 @@ export default function NutritionSummary({
   const [error, setError] = useState<string | null>(null);
   const [goals, setGoals] = useState<GoalMap>({});
   const [calGoal, setCalGoal] = useState<number | null>(null);
+  const [goalMode, setGoalMode] = useState<'lose' | 'gain' | 'maintain'>('maintain');
   const onLayout = useCallback((e: any) => {
     const w = Math.round(e.nativeEvent.layout.width || 0);
     if (w > 0 && w !== listWidth) setListWidth(w);
   }, [listWidth]);
-  
+  const [profileBump, setProfileBump] = useState<number>(0);
   const totals = useMemo<Record<string, number>>(() => {
     const kcals = items.reduce((acc, it) => acc + (computeDisplayCalories(it) ?? 0), 0);
     const macroTotals: Record<string, number> = {};
@@ -711,6 +760,33 @@ export default function NutritionSummary({
     // Make sure the result has an index signature
     return { calories: kcals, ...macroTotals };
   }, [items, computeDisplayCalories]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let channel: any;
+
+    (async () => {
+      // @ts-ignore
+      const { supabase } = await import('../lib/supabase');
+      channel = supabase
+        .channel(`profile-watch:${userId}`) // unique per user
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+          () => setProfileBump(Date.now())
+        )
+        .subscribe();
+    })();
+
+    return () => { channel?.unsubscribe?.(); };
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // bump so the profile fetch effect runs
+      setProfileBump(Date.now());
+    }, [])
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -761,6 +837,9 @@ export default function NutritionSummary({
         setGoals(built.goals);
         setCalGoal(built.calorieGoal);
         setError(null);
+        const gm: 'lose' | 'gain' | 'maintain' =
+          (profile.goal ?? 0) > 0 ? 'gain' : (profile.goal ?? 0) < 0 ? 'lose' : 'maintain';
+        setGoalMode(gm);
       } catch (e: any) {
         console.error('[NutritionSummary] error:', e?.message || e);
         setError('Finish setting up your profile in settings to see your nutrition summary.');
@@ -771,7 +850,18 @@ export default function NutritionSummary({
     return () => {
       mounted = false;
     };
-  }, [userId]);
+  }, [userId, profileBump]);
+
+  useEffect(() => {
+    if (onComputed) {
+      onComputed({
+        totals,
+        goals,
+        calorieGoal: calGoal,
+        goalMode,
+      });
+    }
+  }, [onComputed, totals, goals, calGoal, goalMode]);
 
   // --- build which cards are visible (SAFE to do before early returns) ---
   const showCard2 = hasAnyData(
@@ -794,7 +884,7 @@ export default function NutritionSummary({
     <View key="card1" style={{ padding: 12 }}>
       <Text style={stylesNS.cardTitle}>Calories & Macros</Text>
       <View style={{ flexDirection:'row', alignItems:'center', gap:gapBetweenDonutAndBars, marginTop:8 }}>
-        <CalorieDonut kcalTotal={totals.calories} kcalGoal={calGoal}/>
+        <CalorieDonut kcalTotal={totals.calories} kcalGoal={calGoal} mode={goalMode} />
         <View style={{ flex:1, minWidth: 0 }}>
           <MiniBar label="Carbs (g)"   total={totals.total_carbs} goal={goals.total_carbs} innerWidth={barsWidthCard1} unit={UNITS.total_carbs}/>
           <MiniBar label="Protein (g)" total={totals.protein}     goal={goals.protein}     innerWidth={barsWidthCard1} unit={UNITS.protein}/>

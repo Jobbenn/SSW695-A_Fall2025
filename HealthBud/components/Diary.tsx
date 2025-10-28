@@ -112,12 +112,6 @@ function toNumber(n: any, fallback = 0) {
   return Number.isFinite(v) ? v : fallback;
 }
 
-/**
- * Compute calories to DISPLAY for a joined row.
- * - Base calories come from the Food (flattened or nested) if present,
- *   otherwise from the FoodItem (your view currently uses Food calories).
- * - If Food default servings/serving_size differ from FoodItem's, scale calories.
- */
 function computeDisplayCalories(item: any): number | null {
   // pull whatever shape we have (flattened or nested)
   const baseCalories =
@@ -150,6 +144,132 @@ function computeDisplayCalories(item: any): number | null {
 
   // Otherwise just multiply by item servings (baseline 1)
   return baseCalories * (itemServings || 1);
+}
+
+type GoalMode = 'lose' | 'gain' | 'maintain';
+
+function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
+
+function computeHealthScore(
+  totals: Record<string, number>,
+  goals: Record<string, number>,
+  calorieGoal: number | null,
+  goalMode: GoalMode
+): { score: number; positiveAvg: number; negativeAvg: number } {
+  const POS_KEYS = [
+    'calories',
+    'total_carbs','protein','total_fats','fiber','omega_3','omega_6','water',
+    'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k','thiamin','riboflavin','niacin','vitamin_b6','folate','vitamin_b12','pantothenic_acid','biotin','choline',
+    'calcium','chromium','copper','fluoride','iodine','magnesium','manganese','molybdenum','phosphorus','selenium','zinc','potassium','sodium','chloride',
+  ] as const;
+
+  const LIMIT_KEYS = ['added_sugar','saturated_fats','trans_fats','cholesterol'] as const;
+
+  // Relative calorie fraction; avoid divide-by-zero with tiny epsilon.
+  const rCal = calorieGoal && calorieGoal > 0 ? (totals.calories ?? 0) / calorieGoal : 0;
+  const r = Math.max(rCal, 1e-6);
+
+  // Weights: emphasize calories/macros/fiber; moderate water; light per-micronutrient.
+  const W: Record<string, number> = {
+    calories: 3.0,
+    total_carbs: 2.0,
+    protein: 2.5,
+    total_fats: 2.0,
+    fiber: 2.0,
+    omega_3: 1.5,
+    omega_6: 1.0,
+    water: 1.5,
+  };
+  const MICRO_DEFAULT_W = 1.0;
+
+  // Positive side: proportion of goal met *relative to* calories eaten
+  let posSum = 0, posW = 0;
+  for (const k of POS_KEYS as readonly string[]) {
+    const T = totals[k] ?? 0;
+    const G = (k === 'calories' ? calorieGoal : goals[k]);
+    if (G == null || !Number.isFinite(G) || G <= 0) continue;
+
+    const expectedAtThisIntake = G * r;             // scale by calories eaten
+    const attainment = expectedAtThisIntake > 0 ? Math.min(T / expectedAtThisIntake, 1) : 0;
+
+    const w = (W[k] ?? MICRO_DEFAULT_W);
+    posSum += attainment * w;
+    posW += w;
+  }
+  const positiveAvg = posW > 0 ? posSum / posW : 0;
+
+  // Negative side: limiter overuse proportional to calories eaten + calorie-direction penalty
+  const negParts: number[] = [];
+
+  for (const k of LIMIT_KEYS) {
+    const L = goals[k];
+    if (L == null || !Number.isFinite(L) || L <= 0) continue;
+    const T = totals[k] ?? 0;
+    const expectedLimitAtThisIntake = L * r;
+    const overuse = expectedLimitAtThisIntake > 0 ? Math.min(T / expectedLimitAtThisIntake, 1) : 0;
+    negParts.push(overuse);
+  }
+
+  if (calorieGoal && calorieGoal > 0) {
+    const rr = (totals.calories ?? 0) / calorieGoal;
+    let calPen = 0;
+    if (goalMode === 'lose') calPen = rr > 1 ? clamp01(rr - 1) : 0;
+    else if (goalMode === 'gain') calPen = rr < 1 ? clamp01(1 - rr) : 0;
+    else calPen = clamp01(Math.abs(1 - rr));
+    negParts.push(calPen);
+  }
+
+  const negativeAvg = negParts.length ? negParts.reduce((a,b)=>a+b,0)/negParts.length : 0;
+
+  const PENALTY_FACTOR = 0.10; // gentle subtraction
+  const raw = (positiveAvg * 100) - (PENALTY_FACTOR * (negativeAvg * 100));
+  const score = Math.max(0, Math.min(100, raw));
+
+  return { score, positiveAvg, negativeAvg };
+}
+
+function scoreColor(score: number): string {
+  // smooth banding for readability
+  if (score >= 90) return '#1B7F57';     // deep green
+  if (score >= 80) return '#2FA46F';     // strong green
+  if (score >= 70) return '#7CC4A0';     // green
+  if (score >= 60) return '#F4D35E';     // yellow
+  if (score >= 50) return '#F6A04D';     // orange
+  if (score >= 40) return '#E85C5C';     // red
+  return '#B71C1C';                      // deep red
+}
+
+function HealthScoreDonut({ score }: { score: number }) {
+  const size = 240, stroke = 36;
+  const r = (size - stroke) / 2;
+  const c = Math.PI * 2 * r;
+  const progress = clamp01(score / 100);
+  const seg = c * progress;
+  const color = scoreColor(score);
+
+  return (
+    <View style={{ alignItems: 'center', justifyContent: 'center', marginBottom: 36, marginTop: 12 }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Circle cx={size/2} cy={size/2} r={r} stroke="#EEE" strokeWidth={stroke} fill="none" />
+        {progress > 0 && (
+          <Circle
+            cx={size/2}
+            cy={size/2}
+            r={r}
+            stroke={color}
+            strokeWidth={stroke}
+            strokeDasharray={`${seg}, ${c - seg}`}
+            strokeLinecap="round"
+            fill="none"
+          />
+        )}
+      </Svg>
+      <View style={{ position: 'absolute', alignItems: 'center' }}>
+        <Text style={{ fontWeight: '900', fontSize: 42 }}>{score.toFixed(1)}</Text>
+        <Text style={{ fontSize: 14, color: '#666' }}>Health Score</Text>
+      </View>
+    </View>
+  );
 }
 
 // ---------- Macro donut -----------
@@ -353,7 +473,7 @@ export default function Diary() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const navigation = useNavigation<any>();
-  const route = useRoute();
+  const route = useRoute<any>();
   const isFocused = useIsFocused();
   const { userId } = (route.params || {}) as { userId?: string };
   const [date, setDate] = useState<Date>(() => new Date());
@@ -432,6 +552,10 @@ export default function Diary() {
     if (isFocused) fetchDay();
   }, [isFocused, fetchDay]);
 
+  useEffect(() => {
+    if (route.params?.refreshAt) fetchDay();
+  }, [route.params?.refreshAt, fetchDay]);
+
   const grouped = useMemo(() => {
     const g: Record<Meal, Joined[]> = { breakfast: [], lunch: [], dinner: [], snack: [] };
     for (const it of items) {
@@ -464,6 +588,28 @@ export default function Diary() {
     },
     [navigation, dateISO, userId]
   );
+
+  const [nsSnapshot, setNsSnapshot] = useState<{
+    totals: Record<string, number>;
+    goals: Record<string, number>;
+    calorieGoal: number | null;
+    goalMode: 'lose' | 'gain' | 'maintain';
+  } | null>(null);
+
+  const health = useMemo(() => {
+    if (!nsSnapshot) return null;
+    const { totals, goals, calorieGoal, goalMode } = nsSnapshot;
+    return computeHealthScore(totals, goals, calorieGoal, goalMode);
+  }, [nsSnapshot]);
+
+  const handleComputed = useCallback((payload: {
+    totals: Record<string, number>;
+    goals: Record<string, number>;
+    calorieGoal: number | null;
+    goalMode: 'lose' | 'gain' | 'maintain';
+  }) => {
+    setNsSnapshot(payload);
+  }, []);
 
   return (
     <SafeScreen includeBottomInset={false}>
@@ -506,12 +652,22 @@ export default function Diary() {
 
         {/* Content */}
         <View style={[styles.content, { paddingHorizontal: 16 }]}>
+          <View style={{ marginHorizontal: -16, alignItems: 'center', marginBottom: 4 }}>
+            {health ? (
+              <HealthScoreDonut score={health.score} />
+            ) : (
+              // small spacer to avoid layout shift before NS computes
+              <View style={{ height: 8 }} />
+            )}
+          </View>
+
           <View style={{ marginHorizontal: -16 }}>
             <NutritionSummary
               items={items}
               theme={theme}
               userId={userId}
               computeDisplayCalories={computeDisplayCalories}
+              onComputed={handleComputed}
             />
           </View>
           <MealSection title="Breakfast" items={grouped.breakfast} theme={theme} onEdit={onEdit} onDelete={onDelete} />

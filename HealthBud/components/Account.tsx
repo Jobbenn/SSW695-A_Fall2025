@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { StyleSheet, View, Alert, useColorScheme, Text, Pressable, ScrollView, Keyboard } from 'react-native'
-import { Button, Input } from 'react-native-elements'
+import { Button, Input, Slider } from 'react-native-elements'
 import { Session } from '@supabase/supabase-js'
 import { Ionicons } from '@expo/vector-icons'
 import SafeScreen from './SafeScreen'
@@ -25,6 +25,8 @@ export default function Account({ session }: { session: Session }) {
   const [username, setUsername] = useState('')
   const [website] = useState('') // kept for API parity; hidden from UI
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [goalX10, setGoalX10] = useState<number>(0); // -20..20
+  const goal = goalX10 / 10; // derived decimal for display/save
 
   // New fields (UI state)
   const [unit, setUnit] = useState<Unit>('metric')
@@ -67,6 +69,56 @@ export default function Account({ session }: { session: Session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
 
+  function activityMultiplier(level?: Activity | null) {
+    switch (level) {
+      case 'sedentary': return 1.2;
+      case 'light': return 1.375;
+      case 'moderate': return 1.55;
+      case 'active': return 1.725;
+      case 'very_active': return 1.9;
+      case 'athlete': return 2.0;
+      default: return 1.2;
+    }
+  }
+
+  function hasEnoughForCaloriesLocal(): boolean {
+    // enough for Mifflin (same idea as NutritionSummary)
+    const hasAge   = !!age && !Number.isNaN(Number(age));
+    const hasWtKg  = !!weightDisplay && !Number.isNaN(Number(unit === 'imperial' ? toKg(Number(weightDisplay)) : Number(weightDisplay)));
+    const hasHtCm  =
+      (unit === 'imperial'
+        ? (!!heightFt && !Number.isNaN(Number(heightFt)))
+        : (!!heightCmDisplay && !Number.isNaN(Number(heightCmDisplay))));
+    const hasAct   = !!activityLevel;
+
+    return hasAge && hasWtKg && hasHtCm && hasAct && !!gender;
+  }
+
+  function currentKgCm(): { kg: number | null; cm: number | null } {
+    let kg: number | null = null;
+    let cm: number | null = null;
+
+    if (unit === 'imperial') {
+      const lbs = Number(weightDisplay);
+      if (!Number.isNaN(lbs)) kg = Number(toKg(lbs).toFixed(3));
+      const ft  = Number(heightFt) || 0;
+      const inch = Number(heightIn) || 0;
+      const cmTmp = cmFromFtIn(ft, inch);
+      if (cmTmp > 0) cm = Number(cmTmp.toFixed(2));
+    } else {
+      const kgVal = Number(weightDisplay);
+      if (!Number.isNaN(kgVal)) kg = Number(kgVal.toFixed(3));
+      const cmVal = Number(heightCmDisplay);
+      if (!Number.isNaN(cmVal)) cm = Number(cmVal.toFixed(2));
+    }
+    return { kg, cm };
+  }
+
+  function mifflinLocal(kg: number, cm: number, ageNum: number, genderLocal: Gender): number {
+    const s = genderLocal === 'male' ? 5 : genderLocal === 'female' ? -161 : -78;
+    return Math.max(800, Math.round(10*kg + 6.25*cm - 5*ageNum + s));
+  }
+
   async function getProfile() {
     try {
       setLoading(true)
@@ -85,7 +137,8 @@ export default function Account({ session }: { session: Session }) {
           weight_kg,
           height_cm,
           activity_level,
-          body_fat_percent
+          body_fat_percent,
+          goal
         `)
         .eq('id', session.user.id)
         .single()
@@ -107,6 +160,7 @@ export default function Account({ session }: { session: Session }) {
         setBodyFatPct(
           data.body_fat_percent != null ? String(Number(data.body_fat_percent)) : ''
         )
+        setGoalX10(Math.round(((typeof data.goal === 'number' ? data.goal : 0) * 10)));
 
         const weightKg = typeof data.weight_kg === 'number' ? data.weight_kg : undefined
         const heightCm = typeof data.height_cm === 'number' ? data.height_cm : undefined
@@ -170,6 +224,38 @@ export default function Account({ session }: { session: Session }) {
     }
     setUnit(next)
   }
+  
+  // dynamic lower bound for goalX10 (−20..20 slider ticks = tenths)
+  const dynamicMinX10 = useMemo(() => {
+    if (!hasEnoughForCaloriesLocal()) return -20; // not enough info -> no enforcement here
+
+    const { kg, cm } = currentKgCm();
+    const ageNum = Number(age);
+    if (kg == null || cm == null || Number.isNaN(ageNum)) return -20;
+
+    const bmr  = mifflinLocal(kg, cm, ageNum, gender);
+    const tdee = Math.round(bmr * activityMultiplier(activityLevel));
+    const minCal = gender === 'male' ? 1500 : 1200;
+
+    // goal (in whole units) * 500 = delta kcal
+    // adjusted = tdee + delta >= minCal
+    // => goal >= (minCal - tdee) / 500
+    let minGoal = (minCal - tdee) / 500;
+
+    // cannot be below −2 by design, and if TDEE < minCal then you cannot lose at all
+    if (minGoal > 0) minGoal = 0;
+
+    // slider is tenths → round to nearest integer tick
+    const clamped = Math.max(-2, minGoal);
+    return Math.round(clamped * 10); // x10 space
+  }, [unit, weightDisplay, heightFt, heightIn, heightCmDisplay, age, gender, activityLevel]);
+
+  // if the current value is below the dynamic minimum, lift it up
+  useEffect(() => {
+    if (goalX10 < dynamicMinX10) {
+      setGoalX10(dynamicMinX10);
+    }
+  }, [dynamicMinX10, goalX10]);
 
   async function updateProfile({
     username,
@@ -216,6 +302,7 @@ export default function Account({ session }: { session: Session }) {
         height_cm,
         activity_level: activityLevel,
         body_fat_percent: bodyFatPct ? Number(bodyFatPct) : null,
+        goal: goal,
       }
 
       const { error } = await supabase.from('profiles').upsert(updates)
@@ -345,211 +432,237 @@ export default function Account({ session }: { session: Session }) {
   return (
     <SafeScreen>
       <View style={{ flex: 1 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            paddingBottom: 32,
-            paddingHorizontal: 0,
-            flexGrow: 1,    
-          }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentInsetAdjustmentBehavior="always"
-        >
-          <View>
-            {/* Avatar */}
-            <View style={[styles.verticallySpaced, styles.mt30, styles.horizontallyCentered]}>
-              <Avatar
-                size={200}
-                url={avatarUrl}
-                onUpload={(url: string) => {
-                  setAvatarUrl(url)
-                  updateProfile({ username, avatar_url: url })
-                }}
-              />
-            </View>
-
-            {/* Email (read-only) */}
-            <View style={[styles.verticallySpaced, styles.mt30]}>
-              <Input
-                label="Email"
-                labelStyle={{ color: theme.text }}
-                leftIcon={<Ionicons name="mail-outline" size={22} color={theme.text} />}
-                value={session?.user?.email ?? ''}
-                disabled
-                placeholderTextColor={theme.text}
-                inputStyle={{ color: theme.text }}
-                inputContainerStyle={{ borderBottomColor: theme.text }}
-              />
-            </View>
-
-            {/* Username */}
-            <View style={styles.verticallySpaced}>
-              <Input
-                label="Username"
-                labelStyle={{ color: theme.text }}
-                leftIcon={<Ionicons name="person-outline" size={22} color={theme.text} />}
-                value={username}
-                onChangeText={setUsername}
-                placeholderTextColor={theme.text}
-                inputStyle={{ color: theme.text }}
-                inputContainerStyle={{ borderBottomColor: theme.text }}
-              />
-            </View>
-            
-            {/* Age + Gender row */}
-            <View style={[styles.verticallySpaced, { flexDirection: 'row', gap: 12 }]}>
-              {/* Age */}
-              <View style={{ width: 100 }}>
-                <Input
-                  label="Age"
-                  keyboardType="number-pad"
-                  value={age}
-                  onChangeText={setAge}
-                  labelStyle={{ color: theme.text }}
-                  inputStyle={{ color: theme.text }}
-                  inputContainerStyle={{ borderBottomColor: theme.text }}
-                />
-              </View>
-
-              {/* Gender */}
-              <View style={{ flex: 1, justifyContent: 'center', marginTop: -32, marginLeft: 28 }}>
-                <EnumChips<Gender>
-                  label="Gender"
-                  value={gender}
-                  options={['male', 'female', 'other']}
-                  onChange={setGender}
-                  pretty={{ male: 'Male', female: 'Female', other: 'Other' }}
-                />
-              </View>
-            </View>
-
-            {/* Pregnant + Lactating Row */}
-            <View style={[styles.verticallySpaced, { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 }]}>
-                {/* Pregnant / Lactating */}
-              <BoolToggle label="Pregnant" value={pregnant} onChange={setPregnant} />
-              <BoolToggle label="Lactating" value={lactating} onChange={setLactating} />
-            </View>
-
-            {/* Unit + Weight Row */}
-            <View style={[styles.verticallySpaced, { flexDirection: 'row', justifyContent: 'space-between' }]}>
-                {/* Weight */}
-                <View style={[styles.verticallySpaced, {width: 150, }]}>
-                  <Input
-                    label={`Weight (${unit === 'imperial' ? 'lb' : 'kg'})`}
-                    keyboardType="decimal-pad"
-                    value={weightDisplay}
-                    onChangeText={setWeightDisplay}
-                    labelStyle={{ color: theme.text }}
-                    inputStyle={{ color: theme.text }}
-                    inputContainerStyle={{ borderBottomColor: theme.text }}
-                  />
-                </View>
-
-                {/* Unit preference */}
-                <View style={{ marginTop: 8, marginLeft: 10 }}>
-                  <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>Unit</Text>
-                  {unitChips}
-                </View>
-            </View>
-
-            {/* Height */}
-            {unit === 'imperial' ? (
-              <View style={[styles.row, styles.verticallySpaced]}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Input
-                    label="Height (ft)"
-                    keyboardType="number-pad"
-                    value={heightFt}
-                    onChangeText={setHeightFt}
-                    labelStyle={{ color: theme.text }}
-                    inputStyle={{ color: theme.text }}
-                    inputContainerStyle={{ borderBottomColor: theme.text }}
-                  />
-                </View>
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Input
-                    label="Height (in)"
-                    keyboardType="number-pad"
-                    value={heightIn}
-                    onChangeText={setHeightIn}
-                    labelStyle={{ color: theme.text }}
-                    inputStyle={{ color: theme.text }}
-                    inputContainerStyle={{ borderBottomColor: theme.text }}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.verticallySpaced}>
-                <Input
-                  label="Height (cm)"
-                  keyboardType="decimal-pad"
-                  value={heightCmDisplay}
-                  onChangeText={setHeightCmDisplay}
-                  labelStyle={{ color: theme.text }}
-                  inputStyle={{ color: theme.text }}
-                  inputContainerStyle={{ borderBottomColor: theme.text }}
-                />
-              </View>
-            )}
-
-            {/* Activity Level */}
-            <EnumChips<Activity>
-              label="Activity Level"
-              value={activityLevel}
-              onChange={setActivityLevel}
-              options={[
-                'sedentary',
-                'light',
-                'moderate',
-                'active',
-                'very_active',
-                'athlete',
-              ]}
-              pretty={{
-                sedentary: 'Sedentary',
-                light: 'Light',
-                moderate: 'Moderate',
-                active: 'Active',
-                very_active: 'Very Active',
-                athlete: 'Athlete',
+        <View>
+          {/* Avatar */}
+          <View style={[styles.verticallySpaced, styles.mt30, styles.horizontallyCentered]}>
+            <Avatar
+              size={200}
+              url={avatarUrl}
+              onUpload={(url: string) => {
+                setAvatarUrl(url)
+                updateProfile({ username, avatar_url: url })
               }}
             />
+          </View>
 
-            {/* Body Fat % */}
-            <View style={[styles.verticallySpaced, {marginTop: 30}]}>
+          {/* Email (read-only) */}
+          <View style={[styles.verticallySpaced, styles.mt30]}>
+            <Input
+              label="Email"
+              labelStyle={{ color: theme.text }}
+              leftIcon={<Ionicons name="mail-outline" size={22} color={theme.text} />}
+              value={session?.user?.email ?? ''}
+              disabled
+              placeholderTextColor={theme.text}
+              inputStyle={{ color: theme.text }}
+              inputContainerStyle={{ borderBottomColor: theme.text }}
+            />
+          </View>
+
+          {/* Username */}
+          <View style={styles.verticallySpaced}>
+            <Input
+              label="Username"
+              labelStyle={{ color: theme.text }}
+              leftIcon={<Ionicons name="person-outline" size={22} color={theme.text} />}
+              value={username}
+              onChangeText={setUsername}
+              placeholderTextColor={theme.text}
+              inputStyle={{ color: theme.text }}
+              inputContainerStyle={{ borderBottomColor: theme.text }}
+            />
+          </View>
+          
+          {/* Age + Gender row */}
+          <View style={[styles.verticallySpaced, { flexDirection: 'row', gap: 12 }]}>
+            {/* Age */}
+            <View style={{ width: 100 }}>
               <Input
-                label="Body Fat %"
-                keyboardType="decimal-pad"
-                value={bodyFatPct}
-                onChangeText={setBodyFatPct}
+                label="Age"
+                keyboardType="number-pad"
+                value={age}
+                onChangeText={setAge}
                 labelStyle={{ color: theme.text }}
                 inputStyle={{ color: theme.text }}
                 inputContainerStyle={{ borderBottomColor: theme.text }}
               />
             </View>
 
-            {/* Actions */}
-            <View style={[styles.verticallySpaced, styles.mt20]}>
-              <Button
-                buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
-                title={loading ? 'Loading ...' : 'Update'}
-                titleStyle={[{ color: theme.text }]}
-                onPress={() => updateProfile({ username, avatar_url: avatarUrl })}
-                disabled={loading}
-              />
-            </View>
-
-            <View style={styles.verticallySpaced}>
-              <Button
-                buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
-                title="Sign Out"
-                titleStyle={[{ color: theme.text }]}
-                onPress={() => supabase.auth.signOut()}
+            {/* Gender */}
+            <View style={{ flex: 1, justifyContent: 'center', marginTop: -32, marginLeft: 28 }}>
+              <EnumChips<Gender>
+                label="Gender"
+                value={gender}
+                options={['male', 'female', 'other']}
+                onChange={setGender}
+                pretty={{ male: 'Male', female: 'Female', other: 'Other' }}
               />
             </View>
           </View>
-        </ScrollView>
+
+          {/* Pregnant + Lactating Row */}
+          <View style={[styles.verticallySpaced, { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 }]}>
+              {/* Pregnant / Lactating */}
+            <BoolToggle label="Pregnant" value={pregnant} onChange={setPregnant} />
+            <BoolToggle label="Lactating" value={lactating} onChange={setLactating} />
+          </View>
+
+          {/* Unit + Weight Row */}
+          <View style={[styles.verticallySpaced, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+              {/* Weight */}
+              <View style={[styles.verticallySpaced, {width: 150, }]}>
+                <Input
+                  label={`Weight (${unit === 'imperial' ? 'lb' : 'kg'})`}
+                  keyboardType="decimal-pad"
+                  value={weightDisplay}
+                  onChangeText={setWeightDisplay}
+                  labelStyle={{ color: theme.text }}
+                  inputStyle={{ color: theme.text }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
+
+              {/* Unit preference */}
+              <View style={{ marginTop: 8, marginLeft: 10 }}>
+                <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>Unit</Text>
+                {unitChips}
+              </View>
+          </View>
+
+          {/* Height */}
+          {unit === 'imperial' ? (
+            <View style={[styles.row, styles.verticallySpaced]}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Input
+                  label="Height (ft)"
+                  keyboardType="number-pad"
+                  value={heightFt}
+                  onChangeText={setHeightFt}
+                  labelStyle={{ color: theme.text }}
+                  inputStyle={{ color: theme.text }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Input
+                  label="Height (in)"
+                  keyboardType="number-pad"
+                  value={heightIn}
+                  onChangeText={setHeightIn}
+                  labelStyle={{ color: theme.text }}
+                  inputStyle={{ color: theme.text }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.verticallySpaced}>
+              <Input
+                label="Height (cm)"
+                keyboardType="decimal-pad"
+                value={heightCmDisplay}
+                onChangeText={setHeightCmDisplay}
+                labelStyle={{ color: theme.text }}
+                inputStyle={{ color: theme.text }}
+                inputContainerStyle={{ borderBottomColor: theme.text }}
+              />
+            </View>
+          )}
+
+          {/* Activity Level */}
+          <EnumChips<Activity>
+            label="Activity Level"
+            value={activityLevel}
+            onChange={setActivityLevel}
+            options={[
+              'sedentary',
+              'light',
+              'moderate',
+              'active',
+              'very_active',
+              'athlete',
+            ]}
+            pretty={{
+              sedentary: 'Sedentary',
+              light: 'Light',
+              moderate: 'Moderate',
+              active: 'Active',
+              very_active: 'Very Active',
+              athlete: 'Athlete',
+            }}
+          />
+
+          {/* Body Fat % */}
+          <View style={[styles.verticallySpaced, {marginTop: 30}]}>
+            <Input
+              label="Body Fat %"
+              keyboardType="decimal-pad"
+              value={bodyFatPct}
+              onChangeText={setBodyFatPct}
+              labelStyle={{ color: theme.text }}
+              inputStyle={{ color: theme.text }}
+              inputContainerStyle={{ borderBottomColor: theme.text }}
+            />
+          </View>
+
+          {/* Goal (weight change rate) */}
+          <View style={{ marginTop: 16, marginLeft: 10, marginRight: 16 }}>
+            <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>
+              Goal
+            </Text>
+            <Text style={{ color: theme.text, marginBottom: 6 }}>
+              {goal > 0 ? `Gain ~${Math.round(goal * 500)} kcal/day` :
+              goal < 0 ? `Lose ~${Math.round(Math.abs(goal) * 500)} kcal/day` :
+              'Maintain'}
+            </Text>
+
+            <Slider
+              value={goalX10}
+              onValueChange={(v: number) => {
+                // v is an integer tick in x10 space; enforce dynamic minimum in real time
+                const next = Math.max(dynamicMinX10, Math.min(20, Math.round(v)));
+                setGoalX10(next);
+              }}
+              minimumValue={dynamicMinX10}  // dynamic lower bound (in x10 ticks)
+              maximumValue={20}
+              step={1}
+              thumbTintColor={theme.primary}
+              minimumTrackTintColor={theme.text}
+              maximumTrackTintColor={theme.text}
+              thumbStyle={{ height: 24, width: 24 }}
+              trackStyle={{ height: 3,  }}
+            />
+
+            {/* Tick marks / labels */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+              {[-20, -15, -10, -5, 0, 5, 10, 15, 20].map((t) => (
+                <Text key={t} style={{ color: theme.text, fontSize: 12 }}>
+                  {(t / 10).toFixed(1)}
+                </Text>
+              ))}
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View style={[styles.verticallySpaced, styles.mt20]}>
+            <Button
+              buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
+              title={loading ? 'Loading ...' : 'Update'}
+              titleStyle={[{ color: theme.text }]}
+              onPress={() => updateProfile({ username, avatar_url: avatarUrl })}
+              disabled={loading}
+            />
+          </View>
+
+          <View style={styles.verticallySpaced}>
+            <Button
+              buttonStyle={[styles.authButtons, { backgroundColor: theme.primary, borderColor: theme.text }]}
+              title="Sign Out"
+              titleStyle={[{ color: theme.text }]}
+              onPress={() => supabase.auth.signOut()}
+            />
+          </View>
+        </View>
       </View>
     </SafeScreen>
   )

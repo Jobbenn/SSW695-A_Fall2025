@@ -265,13 +265,24 @@ export default function FoodEntry() {
   // Track previous servings to scale numbers as the user edits the count
   const prevServingsRef = React.useRef<number>(Number(initialForm.servings) || 1);
 
+  const refreshDiaryAndReturn = useCallback(() => {
+    // Update the Diary tab’s params (nested inside MainTabs)
+    navigation.navigate('MainTabs', {
+      screen: 'Diary',
+      params: { refreshAt: Date.now() },
+    });
+
+    // Then return to the previous screen (focus lands on Diary)
+    navigation.goBack();
+  }, [navigation]);
+
   // If someone gets here without an editItem or a picked food, bounce them.
   useEffect(() => {
     if (!editItem && !prefillFood) {
       Alert.alert('Pick a food first', 'Open “Add Food” and choose a food to log.');
-      navigation.goBack();
+      refreshDiaryAndReturn();
     }
-  }, [editItem, prefillFood, navigation]);
+  }, [editItem, prefillFood, refreshDiaryAndReturn]);
 
   // ----- Prefill when editing (display-only for most fields) -----
   useEffect(() => {
@@ -491,7 +502,7 @@ export default function FoodEntry() {
           servings: servingsNum,
         });
         Alert.alert('Updated', 'Your entry has been updated.');
-        navigation.goBack();
+        refreshDiaryAndReturn();
         return;
       }
 
@@ -505,7 +516,7 @@ export default function FoodEntry() {
       await addFoodItem(userId!, newFoodItem);
 
       Alert.alert('Saved', 'Your food has been added.');
-      navigation.goBack();
+      refreshDiaryAndReturn();
     } catch (err: any) {
       console.error(err);
       Alert.alert('Save failed', err?.message || 'Something went wrong while saving.');
