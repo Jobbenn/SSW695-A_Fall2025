@@ -61,9 +61,12 @@ function formatPretty(d: Date) {
 
 function prettyName(k: string) {
   return k
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/total[_\s-]*/gi, '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
+
 
 function pluralizeUnit(unit: string, servings: number | null | undefined) {
   if (!unit) return unit;
