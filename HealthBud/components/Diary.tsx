@@ -657,7 +657,7 @@ export default function Diary() {
     if (!nsSnapshot || items.length === 0) {
       return {
         empty: true,
-        posText: 'Log a meal to show health score and recommendations',
+        posText: 'Log a meal to show health score and tips',
         negText: '',
       };
     }
