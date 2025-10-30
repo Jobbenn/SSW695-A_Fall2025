@@ -35,7 +35,6 @@ type TabKey = 'overview' | 'core' | 'vitamins' | 'minerals';
 const CARD1_MACROS = ['total_carbs', 'protein', 'total_fats'] as const;
 const CARD2_MORE_MACRO = ['omega_3', 'omega_6', 'fiber'] as const;
 const CARD2_MINIMIZE = ['cholesterol', 'trans_fats', 'saturated_fats', 'added_sugar'] as const;
-const CARD2_WATER = ['water'] as const;
 
 const CARD3_MICROS = [
   'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
@@ -50,7 +49,6 @@ const CARD4_MICROS = [
 ] as const;
 
 const ALIASES: Record<string, string[]> = {
-  water: ['Total Water (L/d)', 'water_total'],
   cholesterol: ['Dietary Cholesterol'],
   fiber: ['Total Fiber (g/d)', 'dietary_fiber'],
   total_carbs: ['carbs', 'carbohydrates', 'Carbohydrate', 'Carbohydrate (g/d)'],
@@ -118,7 +116,6 @@ const UNITS: Record<string, string> = {
   added_sugar: 'g',
   trans_fats: 'g',
   saturated_fats: 'g',
-  water: 'L',
 
   // vitamins
   vitamin_a: 'µg',
@@ -391,12 +388,12 @@ async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calor
       }
     }
 
-    // ---------- B) Other macros + water from rdaMacro (wide) ----------
+    // ---------- B) Other macros from rdaMacro (wide) ----------
     // Choose the one row for this profile, then read columns.
     const macroRow = pickWideRdaRow(rdaMacroRows, p);
     if (!macroRow) console.warn('[NS] no matching life-stage row in rdaMacro');
 
-    for (const nutrient of [...CARD2_MORE_MACRO, ...CARD2_WATER]) {
+    for (const nutrient of [...CARD2_MORE_MACRO]) {
       if (!macroRow) continue;
       const header = headerForKeyInRow(nutrient, macroRow);
       const val = header ? toNum(macroRow[header]) : null;
@@ -477,23 +474,16 @@ function TabIcon({ kind, active }: { kind: 'dot' | 'square' | 'triangle' | 'diam
   }
 }
 
-// Reds for "limit" nutrients
-const RED = '#E85C5C';
-const DEEP_RED = '#B71C1C';
-const NORMAL_GREEN = '#7CC4A0';
-const DEEP_GREEN_OK = '#1B7F57';
-const YELLOW = '#F4D35E';
-const ORANGE = '#F6A04D';
-
 // Compute dynamic limit + color rules for the "minimize" nutrients
 function limitSpec(
   key: 'added_sugar' | 'saturated_fats' | 'trans_fats' | 'cholesterol',
   totals: Record<string, number>,
-  calGoal: number | null
-): { goal: number | null; color: string; reverse: boolean; advisory: boolean } {
+  calGoal: number | null,
+  theme: any,
+): { goal: number | null; color: string; reverse: boolean; advisory: boolean; theme?: any } {
   // default return
   let goal: number | null = null;
-  let color = RED;
+  let color = theme.red;
   const reverse = true;
 
   if (key === 'added_sugar') {
@@ -501,29 +491,29 @@ function limitSpec(
     goal = calGoal != null ? (0.10 * calGoal) / 4 : null;
     if (calGoal != null && calGoal > 0) {
       const pct = (totals.added_sugar * 4) / calGoal; // fraction of kcal
-      color = pct <= 0.05 ? RED : DEEP_RED; // 0–5% red, >5–10% deep red
+      color = pct <= 0.05 ? theme.red : theme.deep_red; // 0–5% red, >5–10% deep red
     } else {
       // if we can't compute, keep red
-      color = RED;
+      color = theme.red;
     }
   } else if (key === 'saturated_fats') {
     // 10% kcal from sat fat (9 kcal/g)
     goal = calGoal != null ? (0.10 * calGoal) / 9 : null;
     if (calGoal != null && calGoal > 0) {
       const pct = (totals.saturated_fats * 9) / calGoal;
-      color = pct <= 0.06 ? RED : DEEP_RED; // 0–6% red, >6–10% deep red
+      color = pct <= 0.06 ? theme.red : theme.deep_red; // 0–6% red, >6–10% deep red
     } else {
-      color = RED;
+      color = theme.red;
     }
   } else if (key === 'trans_fats') {
     // 1% kcal from trans fat (9 kcal/g) – always red
     goal = calGoal != null ? (0.01 * calGoal) / 9 : null;
-    color = RED;
+    color = theme.red;
   } else if (key === 'cholesterol') {
     // fixed 300 mg; 0–200 red, >200–300 deep red
     goal = 300;
     const tot = totals.cholesterol ?? 0;
-    color = tot <= 200 ? RED : DEEP_RED;
+    color = tot <= 200 ? theme.red : theme.deep_red;
   }
 
   return { goal, color, reverse, advisory: goal == null };
@@ -537,7 +527,8 @@ function MiniBar({
   unit,
   advisory = false,
   reverse = false,
-  fillColor = NORMAL_GREEN,
+  theme,
+  fillColor,
 }: {
   total: number;
   goal?: number | null;
@@ -546,6 +537,7 @@ function MiniBar({
   unit?: string;
   advisory?: boolean;
   reverse?: boolean;
+  theme?: any;
   fillColor?: string;
 }) {
   const width = Math.max(0, innerWidth);
@@ -556,7 +548,7 @@ function MiniBar({
   const fillW = hasGoal ? Math.max(2, Math.round(width * progress)) : 0;
 
   const reached = hasGoal && total >= Number(goal) - 1e-6;
-  const barColor = reached ? DEEP_GREEN_OK : fillColor;
+  const barColor = reached ? theme.deep_green : fillColor || theme.green;
 
   // inside MiniBar (replace the existing fmt)
   const fmt = (n: number, unit?: string) => {
@@ -610,54 +602,57 @@ function MiniBar({
 function donutColor(
   kcalTotal: number,
   kcalGoal: number | null,
-  mode: 'lose' | 'gain' | 'maintain'
+  mode: 'lose' | 'gain' | 'maintain',
+  theme: any
 ): string {
-  if (!kcalGoal || kcalGoal <= 0) return NORMAL_GREEN;
+  if (!kcalGoal || kcalGoal <= 0) return theme.green;
   const r = kcalTotal / kcalGoal;
 
   if (mode === 'lose') {
     // deep green when goal is reached and within 5% below goal
-    if (r <= 1 && r >= 0.95) return DEEP_GREEN_OK;
+    if (r <= 1 && r >= 0.95) return theme.deep_green;
     // green when within 10% of goal kcal and anything below
-    if (r <= 1.10) return NORMAL_GREEN;
+    if (r <= 1.10) return theme.green;
     // >10–15% above → yellow; >15–20% → orange; >20–25% → red; >25% → deep red
-    if (r <= 1.15) return YELLOW;
-    if (r <= 1.20) return ORANGE;
-    if (r <= 1.25) return RED;
-    return DEEP_RED;
+    if (r <= 1.15) return theme.yellow;
+    if (r <= 1.20) return theme.orange;
+    if (r <= 1.25) return theme.red;
+    return theme.deep_red;
   }
 
   if (mode === 'gain') {
     // deep green when goal is reached and within 5% above goal
-    if (r >= 1 && r <= 1.05) return DEEP_GREEN_OK;
+    if (r >= 1 && r <= 1.05) return theme.deep_green;
     // green when within 10% of goal kcal and anything above
-    if (r >= 0.90) return NORMAL_GREEN;
+    if (r >= 0.90) return theme.green;
     // below goal: >10–15% → yellow; >15–20% → orange; >20–25% → red; >25% → deep red
-    if (r >= 0.85) return YELLOW;      // 0.85–0.90
-    if (r >= 0.80) return ORANGE;      // 0.80–0.85
-    if (r >= 0.75) return RED;         // 0.75–0.80
-    return DEEP_RED;                   // <0.75
+    if (r >= 0.85) return theme.yellow;      // 0.85–0.90
+    if (r >= 0.80) return theme.orange;      // 0.80–0.85
+    if (r >= 0.75) return theme.red;         // 0.75–0.80
+    return theme.deep_red;                   // <0.75
   }
 
   // maintain
   // deep green when within 10% of goal; green otherwise
-  if (r >= 0.90 && r <= 1.10) return DEEP_GREEN_OK;
-  return NORMAL_GREEN;
+  if (r >= 0.90 && r <= 1.10) return theme.deep_green;
+  return theme.green;
 }
 
 function CalorieDonut({
   kcalTotal,
   kcalGoal,
   mode,
+  theme,
 }: {
   kcalTotal: number;
   kcalGoal: number | null;
   mode: 'lose' | 'gain' | 'maintain';
+  theme: any;
 }) {
   const size = 84, stroke = 10, r = (size - stroke) / 2, c = Math.PI * 2 * r;
   const progress = kcalGoal && kcalGoal > 0 ? Math.min(1, kcalTotal / kcalGoal) : 0;
   const seg = c * progress;
-  const strokeColor = donutColor(kcalTotal, kcalGoal, mode);
+  const strokeColor = donutColor(kcalTotal, kcalGoal, mode, theme);
 
   return (
     <View style={{ alignItems:'center', justifyContent:'center' }}>
@@ -749,7 +744,6 @@ export default function NutritionSummary({
     for (const k of [
         ...CARD1_MACROS,
         ...CARD2_MORE_MACRO,
-        ...CARD2_WATER,
         ...CARD2_MINIMIZE,
         ...CARD3_MICROS,
         ...CARD4_MICROS,
@@ -865,7 +859,7 @@ export default function NutritionSummary({
 
   // --- build which cards are visible (SAFE to do before early returns) ---
   const showCard2 = hasAnyData(
-    [...CARD2_MORE_MACRO, ...CARD2_WATER, ...CARD2_MINIMIZE],
+    [...CARD2_MORE_MACRO, ...CARD2_MINIMIZE],
     totals,
     goals
   );
@@ -884,27 +878,24 @@ export default function NutritionSummary({
     <View key="card1" style={{ padding: 12 }}>
       <Text style={stylesNS.cardTitle}>Calories & Macros</Text>
       <View style={{ flexDirection:'row', alignItems:'center', gap:gapBetweenDonutAndBars, marginTop:8 }}>
-        <CalorieDonut kcalTotal={totals.calories} kcalGoal={calGoal} mode={goalMode} />
+        <CalorieDonut kcalTotal={totals.calories} kcalGoal={calGoal} mode={goalMode} theme={theme}/>
         <View style={{ flex:1, minWidth: 0 }}>
-          <MiniBar label="Carbs (g)"   total={totals.total_carbs} goal={goals.total_carbs} innerWidth={barsWidthCard1} unit={UNITS.total_carbs}/>
-          <MiniBar label="Protein (g)" total={totals.protein}     goal={goals.protein}     innerWidth={barsWidthCard1} unit={UNITS.protein}/>
-          <MiniBar label="Fat (g)"     total={totals.total_fats}  goal={goals.total_fats}  innerWidth={barsWidthCard1} unit={UNITS.total_fats}/>
+          <MiniBar label="Carbs (g)"   total={totals.total_carbs} goal={goals.total_carbs} innerWidth={barsWidthCard1} unit={UNITS.total_carbs} theme={theme}/>
+          <MiniBar label="Protein (g)" total={totals.protein}     goal={goals.protein}     innerWidth={barsWidthCard1} unit={UNITS.protein} theme={theme}/>
+          <MiniBar label="Fat (g)"     total={totals.total_fats}  goal={goals.total_fats}  innerWidth={barsWidthCard1} unit={UNITS.total_fats} theme={theme}/>
         </View>
       </View>
     </View>,
 
     <View key="card2" style={{ padding: cardPadding }}>
       <Text style={stylesNS.cardTitle}>Essentials & Limits</Text>
-      {CARD2_WATER.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
-      ))}
       {CARD2_MORE_MACRO.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]} theme={theme}/>
       ))}
       <View style={{ height: 6 }} />
       {CARD2_MINIMIZE.map(k => {
       // dynamic goal + color + reverse fill
-      const spec = limitSpec(k as any, totals, calGoal);
+      const spec = limitSpec(k as any, totals, calGoal, theme);
       const goalToUse = spec.goal ?? goals[k]; // if we couldn't compute (no calGoal), fall back to any table value
       return (
         <MiniBar
@@ -917,6 +908,7 @@ export default function NutritionSummary({
           reverse={spec.reverse}
           fillColor={spec.color}
           advisory={goalToUse == null ? true : false}
+          theme={theme}
         />
       );
     })}
@@ -925,14 +917,14 @@ export default function NutritionSummary({
     <View key="card3" style={{ padding: cardPadding }}>
       <Text style={stylesNS.cardTitle}>Micronutrients (Vitamins)</Text>
       {CARD3_MICROS.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]} theme={theme}/>
       ))}
     </View>,
 
     <View key="card4" style={{ padding: cardPadding }}>
       <Text style={stylesNS.cardTitle}>Micronutrients (Minerals)</Text>
       {CARD4_MICROS.map(k => (
-        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]}/>
+        <MiniBar key={k} label={prettyName(k)} total={totals[k]} goal={goals[k]} innerWidth={barsWidthOther} unit={UNITS[k]} theme={theme}/>
       ))}
     </View>,
   ];

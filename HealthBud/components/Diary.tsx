@@ -9,6 +9,7 @@ import {
   LayoutChangeEvent,
   FlatList,
   Alert,
+  Modal,
 } from 'react-native';
 import SafeScreen from './SafeScreen';
 import { Colors } from '../constants/theme';
@@ -23,6 +24,7 @@ import { Asset } from 'expo-asset';
 import type { Food, FoodItem, Meal } from '../lib/foodTypes';
 import { getJoinedFoodItems, deleteFoodItem } from '../lib/foodApi';
 import NutritionSummary from '../components/NutritionSummary';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const USER_TZ = 'America/New_York';
 
@@ -55,6 +57,12 @@ function formatPretty(d: Date) {
   const day = d.getDate();
   const year = d.getFullYear();
   return `${month} ${day}${ordinal(day)}, ${year}`;
+}
+
+function prettyName(k: string) {
+  return k
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function pluralizeUnit(unit: string, servings: number | null | undefined) {
@@ -158,7 +166,7 @@ function computeHealthScore(
 ): { score: number; positiveAvg: number; negativeAvg: number } {
   const POS_KEYS = [
     'calories',
-    'total_carbs','protein','total_fats','fiber','omega_3','omega_6','water',
+    'total_carbs','protein','total_fats','fiber','omega_3','omega_6',
     'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k','thiamin','riboflavin','niacin','vitamin_b6','folate','vitamin_b12','pantothenic_acid','biotin','choline',
     'calcium','chromium','copper','fluoride','iodine','magnesium','manganese','molybdenum','phosphorus','selenium','zinc','potassium','sodium','chloride',
   ] as const;
@@ -169,7 +177,7 @@ function computeHealthScore(
   const rCal = calorieGoal && calorieGoal > 0 ? (totals.calories ?? 0) / calorieGoal : 0;
   const r = Math.max(rCal, 1e-6);
 
-  // Weights: emphasize calories/macros/fiber; moderate water; light per-micronutrient.
+  // Weights: emphasize calories/macros/fiber; light per-micronutrient.
   const W: Record<string, number> = {
     calories: 3.0,
     total_carbs: 2.0,
@@ -178,7 +186,6 @@ function computeHealthScore(
     fiber: 2.0,
     omega_3: 1.5,
     omega_6: 1.0,
-    water: 1.5,
   };
   const MICRO_DEFAULT_W = 1.0;
 
@@ -228,24 +235,24 @@ function computeHealthScore(
   return { score, positiveAvg, negativeAvg };
 }
 
-function scoreColor(score: number): string {
+function scoreColor(score: number, theme: any): string {
   // smooth banding for readability
-  if (score >= 90) return '#1B7F57';     // deep green
-  if (score >= 80) return '#2FA46F';     // strong green
-  if (score >= 70) return '#7CC4A0';     // green
-  if (score >= 60) return '#F4D35E';     // yellow
-  if (score >= 50) return '#F6A04D';     // orange
-  if (score >= 40) return '#E85C5C';     // red
-  return '#B71C1C';                      // deep red
+  if (score >= 90) return theme.deep_green;
+  if (score >= 80) return theme.strong_green;
+  if (score >= 70) return theme.green;
+  if (score >= 60) return theme.yellow;
+  if (score >= 50) return theme.orange;
+  if (score >= 40) return theme.red;
+  return theme.deep_red;
 }
 
-function HealthScoreDonut({ score }: { score: number }) {
+function HealthScoreDonut({ score, onInfoPress, theme, }: { score: number; onInfoPress?: () => void; theme: any; }) {
   const size = 240, stroke = 36;
   const r = (size - stroke) / 2;
   const c = Math.PI * 2 * r;
   const progress = clamp01(score / 100);
   const seg = c * progress;
-  const color = scoreColor(score);
+  const color = scoreColor(score, theme);
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', marginBottom: 36, marginTop: 12 }}>
@@ -265,6 +272,18 @@ function HealthScoreDonut({ score }: { score: number }) {
         )}
       </Svg>
       <View style={{ position: 'absolute', alignItems: 'center' }}>
+        {/* Info button in the top-right corner above the number */}
+        {onInfoPress && (
+          <Pressable
+            onPress={onInfoPress}
+            hitSlop={10}
+            style={{ position: 'absolute', top: -14, right: -14 }}
+            accessibilityLabel="Show tips about today’s score"
+            accessibilityRole="button"
+          >
+            <Ionicons name="information-circle-outline" size={22} color="#666" />
+          </Pressable>
+        )}
         <Text style={{ fontWeight: '900', fontSize: 42 }}>{score.toFixed(1)}</Text>
         <Text style={{ fontSize: 14, color: '#666' }}>Health Score</Text>
       </View>
@@ -480,6 +499,11 @@ export default function Diary() {
   const [showPicker, setShowPicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
   const [dayNavHeight, setDayNavHeight] = useState(0);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [tipsH, setTipsH] = useState(0);
+  const insets = useSafeAreaInsets();
+  const ANCHOR_BOTTOM = insets.top + 225;
+  const topPos = Math.max(insets.top + 8, ANCHOR_BOTTOM - tipsH);
   const todayYMD = useMemo(() => ymdInTZ(new Date(), USER_TZ), []);
   const canGoNext = useMemo(() => {
     // allow going next only if current date (in NY) is before today's date (in NY)
@@ -602,6 +626,148 @@ export default function Diary() {
     return computeHealthScore(totals, goals, calorieGoal, goalMode);
   }, [nsSnapshot]);
 
+  // Keys we’ll consider for "eat more of"
+  const POS_SUGGEST_KEYS: string[] = [
+    'total_carbs','protein','total_fats','fiber','omega_3','omega_6',
+    'vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k','thiamin','riboflavin','niacin',
+    'vitamin_b6','folate','vitamin_b12','pantothenic_acid','biotin','choline',
+    'calcium','chromium','copper','fluoride','iodine','magnesium','manganese','molybdenum',
+    'phosphorus','selenium','zinc','potassium'
+    // purposely left out sodium/chloride from recommendations (as mostly is excessive in modern diets)
+  ];
+
+  const LIMIT_KEYS: string[] = ['added_sugar','saturated_fats','trans_fats','cholesterol', 'sodium', 'chloride'];
+  const LIMITER_WEIGHT = 1.0;
+  const OTHER_OVER_WEIGHT = 0.8;
+  const OTHER_OVER_MAX = 2.2;
+  const OTHER_OVER_MIN = 1.6;
+
+  function pickRandomAmongTies<T>(arr: T[], keyFn: (x: T) => number) {
+    // sort by value asc, but randomize items with equal key within ~1e-6 tolerance
+    const EPS = 1e-6;
+    return [...arr].sort((a,b) => {
+      const ka = keyFn(a), kb = keyFn(b);
+      if (Math.abs(ka - kb) <= EPS) return Math.random() - 0.5;
+      return ka - kb;
+    });
+  }
+
+  const suggestions = useMemo(() => {
+    // No data or no snapshot → simple message
+    if (!nsSnapshot || items.length === 0) {
+      return {
+        empty: true,
+        posText: 'Log a meal to show health score and recommendations',
+        negText: '',
+      };
+    }
+
+    const { totals, goals, calorieGoal } = nsSnapshot;
+    const cal = Math.max(0, totals.calories ?? 0);
+    const r = calorieGoal && calorieGoal > 0 ? cal / Math.max(1, calorieGoal) : 1; // if no goal, don't scale
+    const rClamped = Math.max(0, Math.min(1, r));
+    const OTHER_OVER_MULTIPLIER = OTHER_OVER_MAX - (OTHER_OVER_MAX - OTHER_OVER_MIN) * rClamped;
+
+    // --- LACKING (top 3) ---
+    type LackRow = { key: string; expected: number; have: number; frac: number };
+    const lacking: LackRow[] = [];
+    for (const k of POS_SUGGEST_KEYS) {
+      const G = goals[k];
+      if (G == null || !Number.isFinite(G) || G <= 0) continue;
+      const expected = Math.max(0, G * r);
+      const have = Math.max(0, totals[k] ?? 0);
+      if (expected <= 0) continue;
+
+      const frac = have / expected; // lower = more lacking
+      if (frac < 1 - 1e-6) {
+        lacking.push({ key: k, expected, have, frac });
+      }
+    }
+
+    const lackingSorted = pickRandomAmongTies(lacking, x => x.frac).slice(0, 3);
+    const lackingNames = lackingSorted.map(x => prettyName(x.key));
+
+    // --- OVER (top 1 across ALL nutrients) ---
+    // Includes both limiters and other nutrients if excessive (>1.5x goal).
+    // Then apply weights so limiters and others are balanced.
+
+    type OverAny = {
+      key: string;
+      ratio: number;       // intake / threshold
+      category: 'limiter' | 'other';
+      score: number;       // weighted severity = (ratio - 1) * weight
+    };
+
+    const overAny: OverAny[] = [];
+
+    // Helper: calorie-scaled expected intake for "by-now" logic
+    function expectedByNow(goalVal?: number | null) {
+      if (goalVal == null || !Number.isFinite(goalVal) || goalVal <= 0) return null;
+      return goalVal * (calorieGoal && calorieGoal > 0 ? r : 1);
+    }
+
+    // 1) Limiters — include if ratio > 1
+    for (const k of LIMIT_KEYS) {
+      // Daily baseline limits. (Sodium/Chloride use typical AI/UL style caps here.)
+      const baseLimit =
+        k === 'added_sugar'     ? (calorieGoal ? (0.10 * calorieGoal) / 4 : null) : // grams, 10% kcal / 4
+        k === 'saturated_fats'  ? (calorieGoal ? (0.10 * calorieGoal) / 9 : null) : // grams, 10% kcal / 9
+        k === 'trans_fats'      ? (calorieGoal ? (0.01 * calorieGoal) / 9 : null) : // grams, 1% kcal / 9
+        k === 'cholesterol'     ? 300 :                                             // mg
+        k === 'sodium'          ? 2300 :                                            // mg (general adult limit)
+        k === 'chloride'        ? 2300 :                                            // mg (typical upper guidance)
+        null;
+
+      const limitAtIntake = baseLimit != null ? baseLimit * (calorieGoal && calorieGoal > 0 ? r : 1) : null;
+      if (!(limitAtIntake && limitAtIntake > 0)) continue;
+
+      const have = Math.max(0, totals[k] ?? 0);
+      const ratio = have / limitAtIntake;
+
+      if (ratio > 1 + 1e-6) {
+        const score = (ratio - 1) * LIMITER_WEIGHT;
+        overAny.push({ key: k, ratio, category: 'limiter', score });
+      }
+    }
+
+    // 2) Non-limiters — include only if > 1.5x by-now goal
+    // Use *all* keys we know about from goals/totals, excluding limiters.
+    const allKeysSet = new Set<string>([
+      ...Object.keys(goals ?? {}),
+      ...Object.keys(totals ?? {}),
+    ]);
+
+    for (const k of allKeysSet) {
+      if (LIMIT_KEYS.includes(k)) continue;
+
+      const G = goals[k];
+      const target = expectedByNow(G);
+      if (!(target && target > 0)) continue;
+
+      const have = Math.max(0, totals[k] ?? 0);
+      const ratio = have / target;
+
+      if (ratio > OTHER_OVER_MULTIPLIER + 1e-6) {
+        const score = (ratio - 1) * OTHER_OVER_WEIGHT;
+        overAny.push({ key: k, ratio, category: 'other', score });
+      }
+    }
+
+    // Pick the single most severe (tie-break randomized)
+    const overSorted = pickRandomAmongTies(overAny, x => -x.score);
+    const topOver = overSorted[0];
+
+    const posText = lackingNames.length
+      ? `Consider consuming more foods rich in ${lackingNames.join(', ').replace(/, ([^,]*)$/, ' and $1')}.`
+      : `You're on track for key nutrients—nice work!`;
+
+    const negText = topOver
+      ? `Consider consuming less ${prettyName(topOver.key)}.`
+      : `No major limits exceeded today.`;
+
+    return { empty: false, posText, negText };
+  }, [nsSnapshot, items.length]);
+
   const handleComputed = useCallback((payload: {
     totals: Record<string, number>;
     goals: Record<string, number>;
@@ -654,7 +820,7 @@ export default function Diary() {
         <View style={[styles.content, { paddingHorizontal: 16 }]}>
           <View style={{ marginHorizontal: -16, alignItems: 'center', marginBottom: 4 }}>
             {health ? (
-              <HealthScoreDonut score={health.score} />
+              <HealthScoreDonut score={health.score} onInfoPress={() => setInfoOpen(true)} theme={theme} />
             ) : (
               // small spacer to avoid layout shift before NS computes
               <View style={{ height: 8 }} />
@@ -676,6 +842,60 @@ export default function Diary() {
           <MealSection title="Snack" items={grouped.snack} theme={theme} onEdit={onEdit} onDelete={onDelete} />
           {loading ? <Text style={{ color: theme.muted, marginTop: 12 }}>Loading…</Text> : null}
         </View>
+
+        {/* ---- Tips Modal ---- */}
+        <Modal
+          visible={infoOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setInfoOpen(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setInfoOpen(false)} />
+
+          <View style={styles.modalRoot} pointerEvents="box-none">
+            <View
+              onLayout={(e) => setTipsH(e.nativeEvent.layout.height)}
+              style={[
+                styles.modalCard,
+                {
+                  position: 'absolute',
+                  top: topPos,
+                  right: Math.max(insets.right, 12),
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>
+                  Today’s Tips
+                </Text>
+                <Pressable onPress={() => setInfoOpen(false)} hitSlop={12}>
+                  <Ionicons name="close" size={20} color={theme.text} />
+                </Pressable>
+              </View>
+
+              <View style={{ height: 10 }} />
+
+              {suggestions.empty ? (
+                <Text style={{ color: theme.text }}>{suggestions.posText}</Text>
+              ) : (
+                <>
+                  <Text style={{ color: theme.deep_green, marginBottom: 8 }}>
+                    {suggestions.posText}
+                  </Text>
+                  <Text style={{ color: theme.deep_red }}>{suggestions.negText}</Text>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
 
         {/* ---- Calendar Popover ---- */}
         {showPicker && (
@@ -828,4 +1048,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmText: { color: 'black', fontWeight: '700' },
+  //modal styles
+  modalRoot: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  modalWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 64,
+  },
+  modalCard: {
+    width: 180,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    shadowColor: '#555',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
 });
