@@ -1,46 +1,57 @@
 // lib/openFoodFacts.ts
 export type OFFProduct = {
-    product_name?: string;
-    brands?: string;
-    nutriments?: Record<string, any>;
-    serving_size?: string;     // e.g., "2 tbsp (37 g)" or "30 g"
-    quantity?: string;         // e.g., "340 g"
-    image_small_url?: string;
-    image_url?: string;
+  code?: string;                   // barcode if available
+  product_name?: string;
+  brands?: string;
+  serving_size?: string;
+  image_small_url?: string;
+  image_url?: string;
+  nutriments?: Record<string, any>;
+};
+
+export function mapOFFToPrefill(product: OFFProduct) {
+  const n = product.nutriments ?? {};
+  const v = (k: string) => (n[k] ?? null);
+
+  return {
+    name: product.product_name ?? "",
+    brand: product.brands ?? "",
+    servingSizeText: product.serving_size ?? "",
+    calories_kcal_100g: v("energy-kcal_100g") ?? v("energy_100g"),
+    protein_g_100g: v("proteins_100g"),
+    fat_g_100g: v("fat_100g"),
+    carbs_g_100g: v("carbohydrates_100g"),
+    sugars_g_100g: v("sugars_100g"),
+    fiber_g_100g: v("fiber_100g"),
+    sodium_mg_100g: v("sodium_100g") ?? (v("salt_100g") ? v("salt_100g") * 400 : null),
+    image: product.image_small_url ?? product.image_url ?? null,
   };
-  
-  export async function lookupProductByBarcode(barcode: string): Promise<OFFProduct | null> {
-    const url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
-    const res = await fetch(url, {
-      headers: { "User-Agent": "HealthBud/1.0 (support@healthbud.example)" },
-    });
-    if (!res.ok) throw new Error(`OpenFoodFacts failed: ${res.status}`);
-    const json = await res.json();
-    if (json?.status !== 1) return null;
-    return json.product as OFFProduct;
-  }
-  
-  /**
-   * Map OFF product to the fields you likely want to prefill in FoodEntry.
-   * OFF uses keys like energy-kcal_100g, fat_100g, carbohydrates_100g, proteins_100g, sugars_100g, fiber_100g, sodium_100g.
-   */
-  export function mapOFFToPrefill(product: OFFProduct) {
-    const n = product.nutriments ?? {};
-    const val = (k: string) => (n[k] ?? null);
-  
-    return {
-      name: product.product_name ?? "",
-      brand: product.brands ?? "",
-      servingSizeText: product.serving_size ?? "",     // keep raw text; you can parse later if you like
-      // Per 100g/macros (common baseline). You can adjust to serving-size math in your AddFood/FoodEntry.
-      calories_kcal_100g: val("energy-kcal_100g") ?? val("energy_100g") ?? null,
-      protein_g_100g: val("proteins_100g") ?? null,
-      fat_g_100g: val("fat_100g") ?? null,
-      carbs_g_100g: val("carbohydrates_100g") ?? null,
-      sugars_g_100g: val("sugars_100g") ?? null,
-      fiber_g_100g: val("fiber_100g") ?? null,
-      sodium_mg_100g: val("sodium_100g") ?? (val("salt_100g") ? val("salt_100g") * 400 : null), // salt(g)→sodium(mg) approx
-      image: product.image_small_url ?? product.image_url ?? null,
-    };
-  }
-  
+}
+
+// Simple keyword search (no auth needed). You can refine with more filters later.
+export async function searchOpenFoodFacts(query: string, pageSize = 20): Promise<OFFProduct[]> {
+  if (!query?.trim()) return [];
+  // v2 search keeps fields compact; tweak as you like
+  const url = `https://world.openfoodfacts.org/api/v2/search?${new URLSearchParams({
+    categories_tags_en: "", // optional filter
+    fields: [
+      "code",
+      "product_name",
+      "brands",
+      "serving_size",
+      "image_small_url",
+      "image_url",
+      "nutriments",
+    ].join(","),
+    page_size: String(pageSize),
+    search_terms: query.trim(),
+  }).toString()}`;
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": "HealthBud/1.0 (support@healthbud.example)" },
+  });
+  if (!res.ok) throw new Error(`OpenFoodFacts search failed: ${res.status}`);
+  const json = await res.json();
+  // OFF v2 returns { products: [...] }
+  return Array.isArray(json?.products) ? (json.products as OFFProduct[]) : [];
+}
