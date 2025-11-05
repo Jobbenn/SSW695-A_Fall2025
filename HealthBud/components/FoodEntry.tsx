@@ -17,9 +17,29 @@ import { addFoodItem, editFoodItem } from '../lib/foodApi';
 type RouteParams = {
   dateISO?: string;
   userId?: string;
-  editItem?: any;          // joined row from v_user_food_items
-  prefillFood?: Food;      // coming from AddFood “Recent” or “All”
-  prefillServingSize?: string; // ignored for saving; display-only
+  editItem?: any;
+
+  prefillFood?: Food;           // (from AddFood lists, unchanged)
+
+  // UPCScanner injection after picking up the UPC then data from te openfoodfacts...
+  prefill?: {
+    name?: string;
+    brand?: string;
+    servingSizeText?: string;   // raw OFF serving size text, e.g. "30 g"
+    calories_kcal_100g?: number | null;
+    protein_g_100g?: number | null;
+    fat_g_100g?: number | null;
+    carbs_g_100g?: number | null;
+    sugars_g_100g?: number | null;
+    fiber_g_100g?: number | null;
+    sodium_mg_100g?: number | null;
+    image?: string | null;
+  } | null;
+  
+  upc?: string | null;
+  source?: "barcode" | "manual" | string | null;
+
+  prefillServingSize?: string;
   prefillServings?: number;
   prefillMeal?: Meal;
 };
@@ -253,8 +273,20 @@ function pluralizeUnit(unit: string, servings: number | null | undefined) {
 export default function FoodEntry() {
   const route = useRoute();
   const navigation = useNavigation<any>();
-  const { dateISO, userId, editItem, prefillFood, prefillServingSize, prefillServings, prefillMeal } =
-    (route.params || {}) as RouteParams;
+  
+  //Updated to support the UPC->food data injection into the fragment
+  const {
+    dateISO,
+    userId,
+    editItem,
+    prefillFood,           // from AddFood lists
+    prefill,               // from UPC scanner (OpenFoodFacts lookup from UPC capture mapping)
+    upc,                   // optional: show it
+    source,                // optional: "barcode"
+    prefillServingSize,
+    prefillServings,
+    prefillMeal,
+  } = (route.params || {}) as RouteParams;
 
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
@@ -277,74 +309,67 @@ export default function FoodEntry() {
   }, [navigation]);
 
   // If someone gets here without an editItem or a picked food, bounce them.
+  // EXCEPT if they used the UPCScanner!!!
   useEffect(() => {
-    if (!editItem && !prefillFood) {
-      Alert.alert('Pick a food first', 'Open “Add Food” and choose a food to log.');
+    // Allow three entry modes:
+    // 1) editing existing item (editItem)
+    // 2) preselected Food from AddFood (prefillFood)
+    // 3) fresh scan from UPC (prefill from scanner) and the database lookup stuff
+    if (!editItem && !prefillFood && !prefill) {
+      Alert.alert('Pick or scan a food first', 'Open “Add Food” or scan a barcode.');
       refreshDiaryAndReturn();
     }
-  }, [editItem, prefillFood, refreshDiaryAndReturn]);
+  }, [editItem, prefillFood, prefill, refreshDiaryAndReturn]);
 
   // ----- Prefill when editing (display-only for most fields) -----
+  // ----- OR from the UPC scan to OpenFoodFacts lookup behavior ---
   useEffect(() => {
-    if (!editItem) return;
-    const get = (k: string): any => editItem[k] ?? editItem.food?.[k];
+    if (!prefill || editItem || prefillFood) return; // don't override other modes
+  
+    // Use the raw serving size text as display-only; the numeric macros are per 100g
+    const servingsDefault = prefillServings ?? 1;
+  
     setForm((prev) => ({
       ...prev,
-      name: String(get('name') ?? ''),
-      brand: String(get('brand') ?? ''),
-      calories: get('calories') != null ? String(get('calories')) : '',
-
-      total_carbs: get('total_carbs') != null ? String(get('total_carbs')) : '',
-      fiber: get('fiber') != null ? String(get('fiber')) : '',
-      sugar: get('sugar') != null ? String(get('sugar')) : '',
-      added_sugar: get('added_sugar') != null ? String(get('added_sugar')) : '',
-
-      total_fats: get('total_fats') != null ? String(get('total_fats')) : '',
-      omega_3: get('omega_3') != null ? String(get('omega_3')) : '',
-      omega_6: get('omega_6') != null ? String(get('omega_6')) : '',
-      saturated_fats: get('saturated_fats') != null ? String(get('saturated_fats')) : '',
-      trans_fats: get('trans_fats') != null ? String(get('trans_fats')) : '',
-
-      protein: get('protein') != null ? String(get('protein')) : '',
-
-      vitamin_a: get('vitamin_a') != null ? String(get('vitamin_a')) : '',
-      vitamin_b6: get('vitamin_b6') != null ? String(get('vitamin_b6')) : '',
-      vitamin_b12: get('vitamin_b12') != null ? String(get('vitamin_b12')) : '',
-      vitamin_c: get('vitamin_c') != null ? String(get('vitamin_c')) : '',
-      vitamin_d: get('vitamin_d') != null ? String(get('vitamin_d')) : '',
-      vitamin_e: get('vitamin_e') != null ? String(get('vitamin_e')) : '',
-      vitamin_k: get('vitamin_k') != null ? String(get('vitamin_k')) : '',
-
-      thiamin: get('thiamin') != null ? String(get('thiamin')) : '',
-      riboflavin: get('riboflavin') != null ? String(get('riboflavin')) : '',
-      niacin: get('niacin') != null ? String(get('niacin')) : '',
-      folate: get('folate') != null ? String(get('folate')) : '',
-      pantothenic_acid: get('pantothenic_acid') != null ? String(get('pantothenic_acid')) : '',
-      biotin: get('biotin') != null ? String(get('biotin')) : '',
-      choline: get('choline') != null ? String(get('choline')) : '',
-
-      calcium: get('calcium') != null ? String(get('calcium')) : '',
-      chromium: get('chromium') != null ? String(get('chromium')) : '',
-      copper: get('copper') != null ? String(get('copper')) : '',
-      fluoride: get('fluoride') != null ? String(get('fluoride')) : '',
-      iodine: get('iodine') != null ? String(get('iodine')) : '',
-      iron: get('iron') != null ? String(get('iron')) : '',
-      magnesium: get('magnesium') != null ? String(get('magnesium')) : '',
-      manganese: get('manganese') != null ? String(get('manganese')) : '',
-      molybdenum: get('molybdenum') != null ? String(get('molybdenum')) : '',
-      phosphorus: get('phosphorus') != null ? String(get('phosphorus')) : '',
-      selenium: get('selenium') != null ? String(get('selenium')) : '',
-      zinc: get('zinc') != null ? String(get('zinc')) : '',
-
-      potassium: get('potassium') != null ? String(get('potassium')) : '',
-      sodium: get('sodium') != null ? String(get('sodium')) : '',
-      chloride: get('chloride') != null ? String(get('chloride')) : '',
-
-      meal: editItem.meal ?? 'breakfast',
-      serving_size: editItem.food?.serving_size ?? '',
-      servings: editItem.servings != null ? String(editItem.servings) : '1',
+      name: prefill.name ?? '',
+      brand: prefill.brand ?? '',
+      serving_size: prefill.servingSizeText ?? '',   // DISPLAY ONLY
+      servings: String(servingsDefault),
+  
+      // Per-100g → show as-is (display-only fields in this screen)
+      calories: prefill.calories_kcal_100g != null ? String(prefill.calories_kcal_100g) : '',
+      total_carbs: prefill.carbs_g_100g != null ? String(prefill.carbs_g_100g) : '',
+      fiber: prefill.fiber_g_100g != null ? String(prefill.fiber_g_100g) : '',
+      sugar: prefill.sugars_g_100g != null ? String(prefill.sugars_g_100g) : '',
+      added_sugar: '', // OFF usually lacks "added sugar" explicitly
+  
+      total_fats: prefill.fat_g_100g != null ? String(prefill.fat_g_100g) : '',
+      omega_3: '',
+      omega_6: '',
+      saturated_fats: '',
+      trans_fats: '',
+  
+      protein: prefill.protein_g_100g != null ? String(prefill.protein_g_100g) : '',
+  
+      // leave vitamins/minerals empty unless you map more OFF fields
+      vitamin_a: '', vitamin_b6: '', vitamin_b12: '', vitamin_c: '',
+      vitamin_d: '', vitamin_e: '', vitamin_k: '',
+      thiamin: '', riboflavin: '', niacin: '', folate: '',
+      pantothenic_acid: '', biotin: '', choline: '',
+      calcium: '', chromium: '', copper: '', fluoride: '',
+      iodine: '', iron: '', magnesium: '', manganese: '',
+      molybdenum: '', phosphorus: '', selenium: '', zinc: '',
+      potassium: '', sodium: prefill.sodium_mg_100g != null ? String(prefill.sodium_mg_100g) : '',
+      chloride: '',
+  
+      meal: prefillMeal ?? prev.meal,
     }));
-  }, [editItem]);
+  
+    // sync pluralization & prev reference for servings scaling UX
+    const desired = Number(servingsDefault) || 1;
+    prevServingsRef.current = desired;
+  }, [prefill, prefillMeal, editItem, prefillFood, prefillServings]);
+
 
   // ----- Prefill when creating from a picked food -----
   useEffect(() => {
@@ -484,7 +509,36 @@ export default function FoodEntry() {
     // Must have either an edit item or a picked food (we guard earlier, but keep it safe)
     const foodId = editItem?.food_id ?? prefillFood?.id;
     if (!foodId) {
-      Alert.alert('Pick a food first', 'Open “Add Food” and choose a food to log.');
+      //Original behavior when missing foodId
+      //Alert.alert('Pick a food first', 'Open “Add Food” and choose a food to log.');
+      //return;
+
+      // New behavior! We came from a scan and never saved a Food yet.
+      // Send user to AddFood with a "draftFromScan", so they can confirm & create a Food.
+      // JNB Tbd is this the behavior we want?
+      navigation.navigate('AddFood', {
+        userId,
+        dateISO,
+        draftFromScan: {
+          upc: upc ?? null,
+          name: form.name,
+          brand: form.brand,
+          serving_size: form.serving_size,
+          // pass numeric fields as numbers if your AddFood expects them
+          calories_100g: form.calories ? Number(form.calories) : null,
+          carbs_100g: form.total_carbs ? Number(form.total_carbs) : null,
+          fat_100g: form.total_fats ? Number(form.total_fats) : null,
+          protein_100g: form.protein ? Number(form.protein) : null,
+          sugars_100g: form.sugar ? Number(form.sugar) : null,
+          fiber_100g: form.fiber ? Number(form.fiber) : null,
+          sodium_mg_100g: form.sodium ? Number(form.sodium) : null,
+          // …include any others you care about
+        },
+        // Also pass the target meal/servings so AddFood can bounce right back to here
+        prefillServings: Number(form.servings) || 1,
+        prefillMeal: sanitizeMeal(form.meal),
+        from: 'FoodEntry.scanNoFood',
+      });
       return;
     }
 
