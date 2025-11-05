@@ -8,11 +8,15 @@ import {
   useColorScheme,
   Pressable,
   Alert,
+  Modal,
+  FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../constants/theme';
 import type { Meal, NewFoodItem, Food } from '../lib/foodTypes';
 import { addFoodItem, editFoodItem } from '../lib/foodApi';
+import { searchOpenFoodFactsSmart, mapOFFToPrefill, type OFFProduct } from '../lib/openFoodFacts';
 
 type RouteParams = {
   dateISO?: string;
@@ -293,6 +297,30 @@ export default function FoodEntry() {
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
+  const [showOFF, setShowOFF] = useState(false);
+  const [offQuery, setOffQuery] = useState("");
+  const [offResults, setOffResults] = useState<OFFProduct[]>([]);
+  const [offSearching, setOffSearching] = useState(false);
+
+  //OFF Database Lookup and Prefill
+  function applyOFFPrefill(p: OFFProduct) {
+    const pf = mapOFFToPrefill(p);
+    setForm(prev => ({
+      ...prev,
+      name: pf.name || prev.name,
+      brand: pf.brand || prev.brand,
+      serving_size: pf.servingSizeText || prev.serving_size,
+      // Fill per-100g macros into your read-only display fields
+      calories: pf.calories_kcal_100g != null ? String(pf.calories_kcal_100g) : prev.calories,
+      total_carbs: pf.carbs_g_100g != null ? String(pf.carbs_g_100g) : prev.total_carbs,
+      fiber: pf.fiber_g_100g != null ? String(pf.fiber_g_100g) : prev.fiber,
+      sugar: pf.sugars_g_100g != null ? String(pf.sugars_g_100g) : prev.sugar,
+      total_fats: pf.fat_g_100g != null ? String(pf.fat_g_100g) : prev.total_fats,
+      protein: pf.protein_g_100g != null ? String(pf.protein_g_100g) : prev.protein,
+      sodium: pf.sodium_mg_100g != null ? String(pf.sodium_mg_100g) : prev.sodium,
+    }));
+  }
+  //End OFF stuff
 
   // Track previous servings to scale numbers as the user edits the count
   const prevServingsRef = React.useRef<number>(Number(initialForm.servings) || 1);
@@ -634,6 +662,21 @@ export default function FoodEntry() {
     () => (
       <>
         <SectionTitle theme={theme}>Basics</SectionTitle>
+
+        {/* JNB Do we want this here??? */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 6 }}>
+          <Pressable
+            onPress={() => {
+              setShowOFF(true);
+              setOffQuery(form.name || "");
+            }}
+            hitSlop={8}
+            style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+          >
+            <Text style={{ color: theme.text, fontWeight: '600' }}>Search OpenFoodFacts Database</Text>
+          </Pressable>
+        </View>
+
         <LabeledInput
           label="Name"
           value={form.name}
@@ -769,6 +812,111 @@ export default function FoodEntry() {
       {VitaminsSection}
       {MineralsSection}
       <View style={{ height: 24 }} />
+
+      {/* Add in the OFF search modal presentation thing */}
+      <Modal visible={showOFF} animationType="slide" onRequestClose={() => setShowOFF(false)}>
+        <View style={[styles.offModalWrap, { backgroundColor: theme.background }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Search Open Food Facts Database</Text>
+
+          <TextInput
+            value={offQuery}
+            onChangeText={setOffQuery}
+            placeholder="e.g., Nutella 13 oz, brand + name…"
+            placeholderTextColor={theme.placeholder}
+            style={[
+              styles.input,
+              { color: theme.text, borderColor: theme.border, backgroundColor: theme.none, marginBottom: 8 },
+            ]}
+            autoFocus
+            returnKeyType="search"
+            onSubmitEditing={async () => {
+              try {
+                setOffSearching(true);
+                  const results = await searchOpenFoodFactsSmart(offQuery, {
+                    country: "United States", // or read from user profile/settings
+                    language: "en",
+                    pageSize: 30,
+                    requireNutrition: true,
+                  });
+                setOffResults(results);
+              } catch (e: any) {
+                Alert.alert('Search failed', e?.message ?? 'Could not fetch results.');
+              } finally {
+                setOffSearching(false);
+              }
+            }}
+          />
+
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+            <Pressable
+              hitSlop={8}
+              onPress={async () => {
+                try {
+                  setOffSearching(true);
+                    const results = await searchOpenFoodFactsSmart(offQuery, {
+                      country: "United States", // or read from user profile/settings
+                      language: "en",
+                      pageSize: 30,
+                      requireNutrition: true,
+                    });
+                  setOffResults(results);
+                } catch (e: any) {
+                  Alert.alert('Search failed', e?.message ?? 'Could not fetch results.');
+                } finally {
+                  setOffSearching(false);
+                }
+              }}
+              style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, backgroundColor: theme.primarySoft }}
+            >
+              <Text style={{ color: theme.primary, fontWeight: '700' }}>Search</Text>
+            </Pressable>
+
+            <Pressable
+              hitSlop={8}
+              onPress={() => { setShowOFF(false); setOffResults([]); }}
+              style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+            >
+              <Text style={{ color: theme.text, fontWeight: '600' }}>Close</Text>
+            </Pressable>
+          </View>
+
+          {offSearching ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator />
+            </View>
+          ) : (
+            <FlatList
+              data={offResults}
+              keyExtractor={(item, i) => item.code ?? String(i)}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: theme.border }} />}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    applyOFFPrefill(item);
+                    setShowOFF(false);
+                  }}
+                  style={{ paddingVertical: 12 }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '600' }}>
+                    {item.product_name ?? '(Unnamed product)'}
+                  </Text>
+                  <Text style={{ color: theme.muted }}>
+                    {(item.brands ? `${item.brands} • ` : '')}
+                    {item.serving_size ? `serving: ${item.serving_size}` : 'per 100g'}
+                  </Text>
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <Text style={{ color: theme.muted, marginTop: 16 }}>
+                  {offQuery ? 'No results yet. Try another query.' : 'Enter a keyword to search.'}
+                </Text>
+              }
+            />
+          )}
+        </View>
+      </Modal>
+      {/* End of the OFF search modal presentation thing */}
+
     </ScrollView>
   );
 }
@@ -809,5 +957,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  offModalWrap: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
 });
