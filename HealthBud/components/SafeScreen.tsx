@@ -22,6 +22,7 @@ type Props = {
   tapToDismiss?: boolean; // optional: tap empty space to dismiss keyboard
 };
 
+// components/SafeScreen.tsx
 export default function SafeScreen({
   children,
   scrollable = true,
@@ -39,7 +40,6 @@ export default function SafeScreen({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // Base padding and growth so there's always something to drag
   const baseContentStyle: ViewStyle = {
     flexGrow: 1,
     paddingHorizontal: 16,
@@ -49,51 +49,50 @@ export default function SafeScreen({
       (includeBottomInset ? insets.bottom : 0),
   };
 
-  const Content = () =>
-    scrollable ? (
-      <ScrollView
-        style={styles.flex} // give the ScrollView height
-        contentContainerStyle={[baseContentStyle, contentContainerStyle]}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode={Platform.select({ ios: 'on-drag', android: 'none' })}
-        contentInsetAdjustmentBehavior="always"
-        showsVerticalScrollIndicator={false}
-        // iOS-only prop; allows touches to become scrolls even if they start on touchables
-        /* @ts-ignore */
-        canCancelContentTouches={true}
-      >
-        {tapToDismiss ? (
-          // A Pressable that fills space lets taps on empty areas dismiss the keyboard
-          <Pressable onPress={Keyboard.dismiss} style={{ flexGrow: 1 }}>
-            {mounted ? children : null}
-          </Pressable>
-        ) : (
-          <View style={{ flexGrow: 1 }}>{mounted ? children : null}</View>
-        )}
-      </ScrollView>
-    ) : (
-      <View style={[styles.flex, baseContentStyle, contentContainerStyle]}>
-        {tapToDismiss ? (
-          <Pressable onPress={Keyboard.dismiss} style={{ flex: 1 }}>
-            {mounted ? children : null}
-          </Pressable>
-        ) : (
-          mounted ? children : null
-        )}
-      </View>
-    );
+  // Build the element (NOT a nested component) so React keeps instance identity stable
+  const content = scrollable ? (
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={[baseContentStyle, contentContainerStyle]}
+      keyboardShouldPersistTaps="always"
+      keyboardDismissMode={Platform.select({ ios: 'on-drag', android: 'none' })}
+      contentInsetAdjustmentBehavior="automatic"  // was "always"
+      showsVerticalScrollIndicator={false}
+      // @ts-ignore (iOS only)
+      canCancelContentTouches={true}
+      scrollsToTop={false}
+    >
+      {tapToDismiss ? (
+        <Pressable onPress={Keyboard.dismiss} style={{ flexGrow: 1 }} pointerEvents="box-none">
+          {children}
+        </Pressable>
+      ) : (
+        <View style={{ flexGrow: 1 }}>{children}</View>
+      )}
+    </ScrollView>
+  ) : (
+    <View style={[styles.flex, baseContentStyle, contentContainerStyle]}>
+      {tapToDismiss ? (
+        <Pressable onPress={Keyboard.dismiss} style={{ flex: 1 }} pointerEvents="box-none">
+          {children}
+        </Pressable>
+      ) : (
+        children
+      )}
+    </View>
+  );
 
   return (
     <SafeAreaView
       style={[styles.root, style]}
-      edges={includeBottomInset ? ['top', 'right', 'left', 'bottom'] : ['top', 'right', 'left']}
+      edges={includeBottomInset ? ['top','right','left','bottom'] : ['top','right','left']}
     >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.select({ ios: 'padding', android: 'height' })}
         keyboardVerticalOffset={keyboardOffset}
       >
-        {mounted ? <Content /> : <View style={styles.filler} />}
+        {mounted ? content : <View style={styles.filler} />}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -1,28 +1,4 @@
-Life Stage,Age (y),"Vitamin A
-(μg/d)","Vitamin C
-(mg/d)","Vitamin D
-(μg/d)","Vitamin E
-(mg/d)",Vitamin K,Thiamin,Riboflavin,"Niacin
-(mg/d)","Vitamin B6
-(mg/d)","Folate
-(μg/d)",Vitamin B12,Pantothenic Acid,Biotin,"Choline
-(g/d)",Carotenoids,Arsenic,"Boron
-(mg/d)","Calcium
-(mg/d)",Chromium,"Copper
-(μg/d)","Fluoride
-(mg/d)","Iodine
-(μg/d)","Iron
-(mg/d)","Magnesium
-(mg/d)","Manganese
-(mg/d)","Molybdenum
-(μg/d)","Nickel
-(mg/d)","Phosphorus
-(g/d)","Selenium
-(μg/d)",Silicon,"Vanadium
-(mg/d)","Zinc
-(mg/d)","Sodium
-(g/d)","Chloride
-(g/d)"
+Life Stage,Age (y),"Vitamin A (μg/d)","Vitamin C (mg/d)","Vitamin D (μg/d)","Vitamin E (mg/d)",Vitamin K,Thiamin,Riboflavin,"Niacin (mg/d)","Vitamin B6 (mg/d)","Folate (μg/d)",Vitamin B12,Pantothenic Acid,Biotin,"Choline (g/d)",Carotenoids,Arsenic,"Boron (mg/d)","Calcium (mg/d)",Chromium,"Copper (μg/d)","Fluoride (mg/d)","Iodine (μg/d)","Iron (mg/d)","Magnesium (mg/d)","Manganese (mg/d)","Molybdenum (μg/d)","Nickel (mg/d)","Phosphorus (g/d)","Selenium (μg/d)",Silicon,"Vanadium(mg/d)","Zinc (mg/d)","Sodium (g/d)","Chloride (g/d)"
 Infants,0–0.5,600.00,NULL,25.00,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1000.00,NULL,NULL,0.70,NULL,40.00,NULL,NULL,NULL,NULL,NULL,45.00,NULL,NULL,4.00,NULL,NULL
 Infants,0.5–1,600.00,NULL,38.00,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1500.00,NULL,NULL,0.90,NULL,40.00,NULL,NULL,NULL,NULL,NULL,60.00,NULL,NULL,5.00,NULL,NULL
 Children,1–3,600.00,400.00,63.00,200.00,NULL,NULL,NULL,10.00,30.00,300.00,NULL,NULL,NULL,1.00,NULL,NULL,3.00,2500.00,NULL,1000.00,1.30,200.00,40.00,65.00,2.00,300.00,0.20,3.00,90.00,NULL,NULL,7.00,1.50,2.30
