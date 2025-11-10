@@ -25,8 +25,8 @@ export default function Account({ session }: { session: Session }) {
   const [username, setUsername] = useState('')
   const [website] = useState('') // kept for API parity; hidden from UI
   const [avatarUrl, setAvatarUrl] = useState('')
-  const [goalX10, setGoalX10] = useState<number>(0); // -20..20
-  const goal = goalX10 / 10; // derived decimal for display/save
+  const [weightGoalX10, setWeightGoalX10] = useState<number>(0);
+  const weight_goal = weightGoalX10 / 10;
 
   // New fields (UI state)
   const [unit, setUnit] = useState<Unit>('metric')
@@ -44,6 +44,18 @@ export default function Account({ session }: { session: Session }) {
   const [heightCmDisplay, setHeightCmDisplay] = useState<string>('') // only used in metric
   const [heightFt, setHeightFt] = useState<string>('')               // only used in imperial
   const [heightIn, setHeightIn] = useState<string>('')               // only used in imperial
+  const [carbText, setCarbText] = useState<string>('33.3');
+  const [fatText, setFatText] = useState<string>('33.4');
+  const [proteinText, setProteinText] = useState<string>('33.3');
+  const clamp01 = (n: number) => Math.max(0, Math.min(100, n));
+  const toPct = (s: string) => {
+    const n = Number(String(s).replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? clamp01(+n) : 0;
+  };
+  const carbPct = Number(toPct(carbText).toFixed(1));
+  const fatPct = Number(toPct(fatText).toFixed(1));
+  const proteinPct = Number(toPct(proteinText).toFixed(1));
+  const macroSum = Number((carbPct + fatPct + proteinPct).toFixed(1));
 
   const colorScheme = useColorScheme()
   const theme = Colors[colorScheme ?? 'light']
@@ -138,7 +150,10 @@ export default function Account({ session }: { session: Session }) {
           height_cm,
           activity_level,
           body_fat_percent,
-          goal
+          weight_goal,
+          carb_goal, 
+          fat_goal, 
+          protein_goal
         `)
         .eq('id', session.user.id)
         .single()
@@ -160,7 +175,21 @@ export default function Account({ session }: { session: Session }) {
         setBodyFatPct(
           data.body_fat_percent != null ? String(Number(data.body_fat_percent)) : ''
         )
-        setGoalX10(Math.round(((typeof data.goal === 'number' ? data.goal : 0) * 10)));
+        setWeightGoalX10(Math.round(((typeof data.weight_goal === 'number' ? data.weight_goal : 0) * 10)));
+
+        // Load macro split or default
+        if (
+          typeof data.carb_goal === 'number' &&
+          typeof data.fat_goal === 'number' &&
+          typeof data.protein_goal === 'number' &&
+          Math.abs((data.carb_goal + data.fat_goal + data.protein_goal) - 100) < 0.6
+        ) {
+          setCarbText(String(Number(data.carb_goal.toFixed(1))));
+          setFatText(String(Number(data.fat_goal.toFixed(1))));
+          setProteinText(String(Number(data.protein_goal.toFixed(1))));
+        } else {
+          setCarbText('33.3'); setFatText('33.4'); setProteinText('33.3');
+        }
 
         const weightKg = typeof data.weight_kg === 'number' ? data.weight_kg : undefined
         const heightCm = typeof data.height_cm === 'number' ? data.height_cm : undefined
@@ -252,10 +281,10 @@ export default function Account({ session }: { session: Session }) {
 
   // if the current value is below the dynamic minimum, lift it up
   useEffect(() => {
-    if (goalX10 < dynamicMinX10) {
-      setGoalX10(dynamicMinX10);
+    if (weightGoalX10 < dynamicMinX10) {
+      setWeightGoalX10(dynamicMinX10);
     }
-  }, [dynamicMinX10, goalX10]);
+  }, [dynamicMinX10, weightGoalX10]);
 
   async function updateProfile({
     username,
@@ -288,6 +317,14 @@ export default function Account({ session }: { session: Session }) {
         if (!Number.isNaN(cm)) height_cm = Number(cm.toFixed(2))
       }
 
+      let c = carbPct, f = fatPct, p = proteinPct;
+      const sum = Number((c + f + p).toFixed(1));
+      if (Math.abs(sum - 100) > 0.05) {
+        const fixedP = clamp01(Number((100 - c - f).toFixed(1)));
+        p = fixedP;
+        Alert.alert('Macro split adjusted', `Protein set to ${fixedP}% so the total equals 100%.`);
+      }
+
       const updates = {
         id: session.user.id,
         username,
@@ -302,7 +339,10 @@ export default function Account({ session }: { session: Session }) {
         height_cm,
         activity_level: activityLevel,
         body_fat_percent: bodyFatPct ? Number(bodyFatPct) : null,
-        goal: goal,
+        weight_goal: weight_goal,
+        carb_goal: c,
+        fat_goal: f,
+        protein_goal: p,
       }
 
       const { error } = await supabase.from('profiles').upsert(updates)
@@ -427,6 +467,35 @@ export default function Account({ session }: { session: Session }) {
         </View>
       </View>
     )
+  }
+
+  function MacroSplitBar({
+    carbs, fat, protein, theme,
+  }: {
+    carbs: number; fat: number; protein: number; theme: any;
+  }) {
+    const width = '100%';
+    const height = 16;
+    const track = { backgroundColor: theme.border, borderColor: theme.border };
+
+    // Colors: keep consistent with Nutrition Summary palette you used previously
+    const carbColor = '#5ca4c6ff';   // Carbs
+    const fatColor = '#F4B266';      // Fat
+    const proteinColor = '#f47966ff';// Protein
+
+    const c = Math.max(0, Math.min(100, carbs));
+    const f = Math.max(0, Math.min(100, fat));
+    const p = Math.max(0, Math.min(100, protein));
+
+    return (
+      <View style={{ width, height, borderRadius: 10, overflow: 'hidden', borderWidth: 1, ...track }}>
+        <View style={{ flexDirection: 'row', width: '100%', height: '100%' }}>
+          <View style={{ flex: c, backgroundColor: carbColor }} />
+          <View style={{ flex: f, backgroundColor: fatColor }} />
+          <View style={{ flex: p, backgroundColor: proteinColor }} />
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -608,20 +677,20 @@ export default function Account({ session }: { session: Session }) {
           {/* Goal (weight change rate) */}
           <View style={{ marginTop: 16, marginLeft: 10, marginRight: 16 }}>
             <Text style={[styles.label, { color: theme.text, fontWeight: 'bold', fontSize: 16 }]}>
-              Goal
+              Goals
             </Text>
             <Text style={{ color: theme.text, marginBottom: 6 }}>
-              {goal > 0 ? `Gain ~${Math.round(goal * 500)} kcal/day` :
-              goal < 0 ? `Lose ~${Math.round(Math.abs(goal) * 500)} kcal/day` :
+              {weight_goal > 0 ? `Gain ~${Math.round(weight_goal * 500)} kcal/day` :
+              weight_goal < 0 ? `Lose ~${Math.round(Math.abs(weight_goal) * 500)} kcal/day` :
               'Maintain'}
             </Text>
 
             <Slider
-              value={goalX10}
+              value={weightGoalX10}
               onValueChange={(v: number) => {
                 // v is an integer tick in x10 space; enforce dynamic minimum in real time
                 const next = Math.max(dynamicMinX10, Math.min(20, Math.round(v)));
-                setGoalX10(next);
+                setWeightGoalX10(next);
               }}
               minimumValue={dynamicMinX10}  // dynamic lower bound (in x10 ticks)
               maximumValue={20}
@@ -641,6 +710,67 @@ export default function Account({ session }: { session: Session }) {
                 </Text>
               ))}
             </View>
+          </View>
+
+          {/* Goal (Carbs, Proteins, Fats) */}
+          <View style={{ marginTop: 40, alignItems: 'center', justifyContent: 'center', marginLeft: 10, marginRight: 16 }}>
+            {/* Row with 3 inputs */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 96 }}>
+                <Input
+                  label="Carbs %"
+                  keyboardType="decimal-pad"
+                  value={carbText}
+                  onChangeText={setCarbText}
+                  labelStyle={{ color: theme.text, fontSize: 14, textAlign: 'center' }}
+                  inputStyle={{ color: theme.text, textAlign: 'center' }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
+              <View style={{ width: 96 }}>
+                <Input
+                  label="Fat %"
+                  keyboardType="decimal-pad"
+                  value={fatText}
+                  onChangeText={setFatText}
+                  labelStyle={{ color: theme.text, fontSize: 14, textAlign: 'center' }}
+                  inputStyle={{ color: theme.text, textAlign: 'center' }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
+              <View style={{ width: 96 }}>
+                <Input
+                  label="Protein %"
+                  keyboardType="decimal-pad"
+                  value={proteinText}
+                  onChangeText={setProteinText}
+                  labelStyle={{ color: theme.text, fontSize: 14, textAlign: 'center' }}
+                  inputStyle={{ color: theme.text, textAlign: 'center' }}
+                  inputContainerStyle={{ borderBottomColor: theme.text }}
+                />
+              </View>
+            </View>
+
+            {/* Split bar (mirrors Nutrition Summary colors) */}
+            <View style={{ marginTop: 10 }}>
+              <MacroSplitBar
+                carbs={carbPct}
+                fat={fatPct}
+                protein={proteinPct}
+                theme={theme}
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, marginHorizontal: 4 }}>
+                <Text style={{ color: theme.text, fontSize: 12 }}>{carbPct}% Carbs</Text>
+                <Text style={{ color: theme.text, fontSize: 12 }}>{fatPct}% Fat</Text>
+                <Text style={{ color: theme.text, fontSize: 12 }}>{proteinPct}% Protein</Text>
+              </View>
+            </View>
+
+            {/* Sum / hint */}
+            <Text style={{ color: Math.abs(macroSum - 100) < 0.06 ? theme.text : theme.red, marginTop: 12 }}>
+              Total is {macroSum.toFixed(1)}%
+              {Math.abs(macroSum - 100) < 0.06 ? '' : ', will auto-adjust to 100% on save'}
+            </Text>
           </View>
 
           {/* Actions */}

@@ -18,7 +18,10 @@ type Profile = {
   unit?: 'imperial' | 'metric' | null;
   activity_level?: ActivityLevel | null;
   body_fat_percent?: number | null;
-  goal?: number | null;
+  weight_goal?: number | null;
+  carb_goal?: number | null;
+  fat_goal?: number | null;
+  protein_goal?: number | null;
 };
 
 export type GoalMap = Record<string, number>;
@@ -246,7 +249,7 @@ function calcCalorieGoal(p: Profile): number | null {
   const tdee = Math.round(bmr * activityMultiplier(p.activity_level ?? 'sedentary'));
 
   // Goal is a rate multiplier where 1.0 ≈ ±500 kcal/day
-  const delta = Math.round((p.goal ?? 0) * 500);
+  const delta = Math.round((p.weight_goal ?? 0) * 500);
   const adjusted = tdee + delta;
 
   // ---- HARD CAP (double safety) ----
@@ -335,6 +338,10 @@ function midpointPct(s: string): number | null {
   return (lo + hi) / 2;
 }
 
+function gramsFromPct(pct: number, kcal: number, kcalPerGram: 4|9) {
+  return Math.round(((pct / 100) * kcal / kcalPerGram) * 10) / 10;
+}
+
 async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calorieGoal: number | null } | null> {
   try {
     const reqRanges = require('../assets/data/rangesMacro.csv');
@@ -357,39 +364,48 @@ async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calor
     const goals: GoalMap = {};
     const calorieGoal = calcCalorieGoal(p);
 
-    // ---------- A) Macronutrient % ranges (protein, total_fats, total_carbs) ----------
-    // rangesMacro.csv uses age bands in its COLUMNS; pick the correct column, take midpoint %, convert to grams.
-    const age = p.age ?? 30;
-    const colName =
-      age < 1   ? null :
-      age < 4   ? 'Children, 1–3 y (% kcal)' :
-      age < 19  ? 'Children, 4–18 y (% kcal)' :
-                  'Adults (% kcal)';
+    const userHasSplit =
+      typeof p.carb_goal === 'number' &&
+      typeof p.fat_goal === 'number' &&
+      typeof p.protein_goal === 'number' &&
+      Math.abs((p.carb_goal + p.fat_goal + p.protein_goal) - 100) < 0.5;
 
-    const rangeRowByName = (needle: string) =>
-      rangesRows.find(r => (r['Macronutrient'] || '').toLowerCase() === needle.toLowerCase());
+    if (userHasSplit && calorieGoal != null) {
+      goals.total_carbs = gramsFromPct(p.carb_goal!, calorieGoal, 4);
+      goals.total_fats  = gramsFromPct(p.fat_goal!,  calorieGoal, 9);
+      goals.protein     = gramsFromPct(p.protein_goal!, calorieGoal, 4);
+    } else {
+    
+        const age = p.age ?? 30;
+      const colName =
+        age < 1   ? null :
+        age < 4   ? 'Children, 1–3 y (% kcal)' :
+        age < 19  ? 'Children, 4–18 y (% kcal)' :
+                    'Adults (% kcal)';
 
-    const spec: Array<{ key: 'protein'|'total_fats'|'total_carbs', macroKcalPerGram: 4|9, label: string }> = [
-      { key: 'total_fats',   macroKcalPerGram: 9, label: 'Fat' },
-      { key: 'total_carbs',  macroKcalPerGram: 4, label: 'Carbohydrate' },
-      { key: 'protein',      macroKcalPerGram: 4, label: 'Protein' },
-    ];
+      const rangeRowByName = (needle: string) =>
+        rangesRows.find(r => (r['Macronutrient'] || '').toLowerCase() === needle.toLowerCase());
 
-    for (const { key, macroKcalPerGram, label } of spec) {
-      const row = rangeRowByName(label);
-      const pctStr = colName ? (row?.[colName] ?? '') : '';
-      const pct = midpointPct(pctStr);
-      if (pct != null && calorieGoal != null) {
-        const raw = (pct / 100) * calorieGoal / macroKcalPerGram;
-        const grams = Math.round(raw * 10) / 10; // keep one decimal
-        goals[key] = grams;
-      } else {
-        console.warn('[NS] no % range for', key, 'col=', colName, 'row=', row);
+      const spec: Array<{ key: 'protein'|'total_fats'|'total_carbs', macroKcalPerGram: 4|9, label: string }> = [
+        { key: 'total_fats',   macroKcalPerGram: 9, label: 'Fat' },
+        { key: 'total_carbs',  macroKcalPerGram: 4, label: 'Carbohydrate' },
+        { key: 'protein',      macroKcalPerGram: 4, label: 'Protein' },
+      ];
+
+      for (const { key, macroKcalPerGram, label } of spec) {
+        const row = rangeRowByName(label);
+        const pctStr = colName ? (row?.[colName] ?? '') : '';
+        const pct = midpointPct(pctStr);
+        if (pct != null && calorieGoal != null) {
+          const raw = (pct / 100) * calorieGoal / macroKcalPerGram;
+          const grams = Math.round(raw * 10) / 10; // keep one decimal
+          goals[key] = grams;
+        } else {
+          console.warn('[NS] no % range for', key, 'col=', colName, 'row=', row);
+        }
       }
     }
 
-    // ---------- B) Other macros from rdaMacro (wide) ----------
-    // Choose the one row for this profile, then read columns.
     const macroRow = pickWideRdaRow(rdaMacroRows, p);
     if (!macroRow) console.warn('[NS] no matching life-stage row in rdaMacro');
 
@@ -401,12 +417,6 @@ async function buildGoalsForProfile(p: Profile): Promise<{ goals: GoalMap; calor
       else console.warn('[NS] no numeric rdaMacro for', nutrient, 'header=', header);
     }
 
-    // ---------- C) “Minimize” guidance (text) ----------
-    // additional.csv is advisory text; there’s no numeric limit, so we *don’t* set numeric goals.
-    // (UI will still render the totals; goal will show —)
-    // If you later add numeric ULs, they’ll start showing automatically here.
-
-    // ---------- D) Micronutrients from rdaMicro (wide) ----------
     const microRow = pickWideRdaRow(rdaMicroRows, p);
     if (!microRow) console.warn('[NS] no matching life-stage row in rdaMicro');
 
@@ -832,7 +842,7 @@ export default function NutritionSummary({
         setCalGoal(built.calorieGoal);
         setError(null);
         const gm: 'lose' | 'gain' | 'maintain' =
-          (profile.goal ?? 0) > 0 ? 'gain' : (profile.goal ?? 0) < 0 ? 'lose' : 'maintain';
+          (profile.weight_goal ?? 0) > 0 ? 'gain' : (profile.weight_goal ?? 0) < 0 ? 'lose' : 'maintain';
         setGoalMode(gm);
       } catch (e: any) {
         console.error('[NutritionSummary] error:', e?.message || e);
