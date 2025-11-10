@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../constants/theme';
-import type { Meal, NewFoodItem, Food } from '../lib/foodTypes';
-import { addFoodItem, editFoodItem } from '../lib/foodApi';
+import type { Meal, NewFoodItem, Food, NewFood } from '../lib/foodTypes';
+import { addFood, editFood, addFoodItem, editFoodItem } from '../lib/foodApi';
 
 type RouteParams = {
   dateISO?: string;
@@ -22,6 +22,7 @@ type RouteParams = {
   prefillServingSize?: string; // ignored for saving; display-only
   prefillServings?: number;
   prefillMeal?: Meal;
+  manualNew?: boolean;
 };
 
 const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -253,7 +254,7 @@ function pluralizeUnit(unit: string, servings: number | null | undefined) {
 export default function FoodEntry() {
   const route = useRoute();
   const navigation = useNavigation<any>();
-  const { dateISO, userId, editItem, prefillFood, prefillServingSize, prefillServings, prefillMeal } =
+  const { dateISO, userId, editItem, prefillFood, prefillServingSize, prefillServings, prefillMeal, manualNew } =
     (route.params || {}) as RouteParams;
 
   const colorScheme = useColorScheme();
@@ -261,9 +262,10 @@ export default function FoodEntry() {
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
-
+  
   // Track previous servings to scale numbers as the user edits the count
   const prevServingsRef = React.useRef<number>(Number(initialForm.servings) || 1);
+  const isManual = !!manualNew && !editItem && !prefillFood;
 
   const refreshDiaryAndReturn = useCallback(() => {
     // Update the Diary tab’s params (nested inside MainTabs)
@@ -278,11 +280,11 @@ export default function FoodEntry() {
 
   // If someone gets here without an editItem or a picked food, bounce them.
   useEffect(() => {
-    if (!editItem && !prefillFood) {
+    if (!editItem && !prefillFood && !isManual) {
       Alert.alert('Pick a food first', 'Open “Add Food” and choose a food to log.');
       refreshDiaryAndReturn();
     }
-  }, [editItem, prefillFood, refreshDiaryAndReturn]);
+  }, [editItem, prefillFood, isManual, refreshDiaryAndReturn]);
 
   // ----- Prefill when editing (display-only for most fields) -----
   useEffect(() => {
@@ -464,27 +466,64 @@ export default function FoodEntry() {
     return (v === 'breakfast' || v === 'lunch' || v === 'dinner' || v === 'snack') ? (v as MealT) : 'breakfast';
   }
 
+  function toNumberOrZero(v: string): number {
+    if (v.trim() === '' || v == null) return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // helper to compare payload to an existing Food (ignoring null/undefined differences)
+  const payloadEqualsFood = (food: Food, payload: NewFood) => {
+    const keys: (keyof NewFood)[] = [
+      'name','brand','calories',
+      'total_carbs','fiber','sugar','added_sugar',
+      'total_fats','omega_3','omega_6','saturated_fats','trans_fats',
+      'protein',
+      'vitamin_a','vitamin_b6','vitamin_b12','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+      'thiamin','riboflavin','niacin','folate','pantothenic_acid','biotin','choline',
+      'calcium','chromium','copper','fluoride','iodine','iron','magnesium','manganese','molybdenum','phosphorus','selenium','zinc',
+      'potassium','sodium','chloride',
+    ];
+    for (const k of keys) {
+      const fv = (food as any)[k] ?? null;
+      const pv = (payload as any)[k] ?? null;
+      if (typeof fv === 'number' || typeof pv === 'number') {
+        const a = fv == null ? null : Number(fv);
+        const b = pv == null ? null : Number(pv);
+        if (!(a === b || (a == null && b == null))) return false;
+      } else {
+        if ((fv ?? null) !== (pv ?? null)) return false;
+      }
+    }
+    return true;
+  };
+
   const onSave = useCallback(async () => {
-    // Only validate what the user can edit: servings & meal, plus context
+    // Common validation
     const missing: string[] = [];
+    if (!form.name.trim()) missing.push('Name');
+    if (!form.serving_size.trim()) missing.push('Serving size');
     if (!form.servings.trim()) missing.push('Servings');
-    if (!dateISO || !userId) missing.push('Context');
+    if (!form.calories.trim()) missing.push('Calories');
 
     if (missing.length) {
       Alert.alert('Missing required fields', `Please fill: ${missing.join(', ')}`);
       return;
     }
 
+    const cal = Number(form.calories);
+    if (!Number.isFinite(cal)) {
+      Alert.alert('Invalid calories', 'Calories must be a number.');
+      return;
+    }
     const servingsNum = Number(form.servings);
     if (!Number.isFinite(servingsNum) || servingsNum <= 0) {
       Alert.alert('Invalid servings', 'Servings must be a positive number.');
       return;
     }
 
-    // Must have either an edit item or a picked food (we guard earlier, but keep it safe)
-    const foodId = editItem?.food_id ?? prefillFood?.id;
-    if (!foodId) {
-      Alert.alert('Pick a food first', 'Open “Add Food” and choose a food to log.');
+    if (!dateISO || !userId) {
+      Alert.alert('Missing context', 'Date or User ID not provided.');
       return;
     }
 
@@ -494,21 +533,89 @@ export default function FoodEntry() {
     try {
       const mealToUse = sanitizeMeal(form.meal);
       const dateStr = dateISO!;
+      // Build the food payload
+      const foodPayload: NewFood = {
+        name: form.name.trim(),
+        brand: form.brand.trim() || null,
+        serving_size: form.serving_size.trim() || null,
+        servings: toNumberOrZero(form.servings),
+
+        calories: cal,
+
+        total_carbs: toNumberOrZero(form.total_carbs),
+        fiber: toNumberOrZero(form.fiber),
+        sugar: toNumberOrZero(form.sugar),
+        added_sugar: toNumberOrZero(form.added_sugar),
+
+        total_fats: toNumberOrZero(form.total_fats),
+        omega_3: toNumberOrZero(form.omega_3),
+        omega_6: toNumberOrZero(form.omega_6),
+        saturated_fats: toNumberOrZero(form.saturated_fats),
+        trans_fats: toNumberOrZero(form.trans_fats),
+
+        protein: toNumberOrZero(form.protein),
+
+        vitamin_a: toNumberOrZero(form.vitamin_a),
+        vitamin_b6: toNumberOrZero(form.vitamin_b6),
+        vitamin_b12: toNumberOrZero(form.vitamin_b12),
+        vitamin_c: toNumberOrZero(form.vitamin_c),
+        vitamin_d: toNumberOrZero(form.vitamin_d),
+        vitamin_e: toNumberOrZero(form.vitamin_e),
+        vitamin_k: toNumberOrZero(form.vitamin_k),
+
+        thiamin: toNumberOrZero(form.thiamin),
+        riboflavin: toNumberOrZero(form.riboflavin),
+        niacin: toNumberOrZero(form.niacin),
+        folate: toNumberOrZero(form.folate),
+        pantothenic_acid: toNumberOrZero(form.pantothenic_acid),
+        biotin: toNumberOrZero(form.biotin),
+        choline: toNumberOrZero(form.choline),
+
+        calcium: toNumberOrZero(form.calcium),
+        chromium: toNumberOrZero(form.chromium),
+        copper: toNumberOrZero(form.copper),
+        fluoride: toNumberOrZero(form.fluoride),
+        iodine: toNumberOrZero(form.iodine),
+        iron: toNumberOrZero(form.iron),
+        magnesium: toNumberOrZero(form.magnesium),
+        manganese: toNumberOrZero(form.manganese),
+        molybdenum: toNumberOrZero(form.molybdenum),
+        phosphorus: toNumberOrZero(form.phosphorus),
+        selenium: toNumberOrZero(form.selenium),
+        zinc: toNumberOrZero(form.zinc),
+        potassium: toNumberOrZero(form.potassium),
+        sodium: toNumberOrZero(form.sodium),
+        chloride: toNumberOrZero(form.chloride),
+      };
 
       if (editItem) {
+        // UPDATE flow
+        await editFood(editItem.food_id, foodPayload as Partial<NewFood>);
         await editFoodItem(editItem.id, {
           eaten_at: dateStr,
           meal: mealToUse,
           servings: servingsNum,
         });
+
         Alert.alert('Updated', 'Your entry has been updated.');
         refreshDiaryAndReturn();
         return;
       }
 
-      // Create new Food Item ONLY (no Food writes)
+      // CREATE flow — avoid duplicate if unchanged from prefillFood
+      let foodIdToUse: string | null = null;
+
+      if (prefillFood && payloadEqualsFood(prefillFood, foodPayload)) {
+        // Unchanged → reuse existing food id
+        foodIdToUse = prefillFood.id;
+      } else {
+        // Changed OR manualNew → create a new foods row
+        const insertedFood = await addFood(foodPayload);
+        foodIdToUse = insertedFood.id;
+      }
+
       const newFoodItem: Omit<NewFoodItem, 'user_id'> = {
-        food_id: foodId,
+        food_id: foodIdToUse!,
         eaten_at: dateStr,
         meal: mealToUse,
         servings: servingsNum,
@@ -647,8 +754,8 @@ export default function FoodEntry() {
 
         <SectionTitle theme={theme}>Fats</SectionTitle>
         <LabeledInput label="Total fats" value={form.total_fats} onChangeText={() => {}} placeholder="g" keyboardType="numeric" theme={theme} />
-        <LabeledInput label="Omega-3" value={form.omega_3} onChangeText={() => {}} placeholder="g or mg" keyboardType="numeric" theme={theme} />
-        <LabeledInput label="Omega-6" value={form.omega_6} onChangeText={() => {}} placeholder="g or mg" keyboardType="numeric" theme={theme} />
+        <LabeledInput label="Omega-3" value={form.omega_3} onChangeText={() => {}} placeholder="g" keyboardType="numeric" theme={theme} />
+        <LabeledInput label="Omega-6" value={form.omega_6} onChangeText={() => {}} placeholder="g" keyboardType="numeric" theme={theme} />
         <LabeledInput label="Saturated fats" value={form.saturated_fats} onChangeText={() => {}} placeholder="g" keyboardType="numeric" theme={theme} />
         <LabeledInput label="Trans fats" value={form.trans_fats} onChangeText={() => {}} placeholder="g" keyboardType="numeric" theme={theme} />
 

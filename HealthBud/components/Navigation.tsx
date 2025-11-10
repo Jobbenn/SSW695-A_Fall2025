@@ -98,6 +98,15 @@ export default function Navigation({ session }: Props) {
                   <Pressable
                     accessibilityRole="button"
                     hitSlop={10}
+                    onPress={() => {
+                      const dateISO = route?.params?.dateISO;
+                      const userId = route?.params?.userId;
+                      navigation.navigate('FoodEntry', {
+                        dateISO,
+                        userId,
+                        manualNew: true,
+                      });
+                    }}
                   >
                     <Ionicons name="add" size={28} color={theme.text} />
                   </Pressable>
