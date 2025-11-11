@@ -472,32 +472,6 @@ export default function FoodEntry() {
     return Number.isFinite(n) ? n : 0;
   }
 
-  // helper to compare payload to an existing Food (ignoring null/undefined differences)
-  const payloadEqualsFood = (food: Food, payload: NewFood) => {
-    const keys: (keyof NewFood)[] = [
-      'name','brand','calories',
-      'total_carbs','fiber','sugar','added_sugar',
-      'total_fats','omega_3','omega_6','saturated_fats','trans_fats',
-      'protein',
-      'vitamin_a','vitamin_b6','vitamin_b12','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
-      'thiamin','riboflavin','niacin','folate','pantothenic_acid','biotin','choline',
-      'calcium','chromium','copper','fluoride','iodine','iron','magnesium','manganese','molybdenum','phosphorus','selenium','zinc',
-      'potassium','sodium','chloride',
-    ];
-    for (const k of keys) {
-      const fv = (food as any)[k] ?? null;
-      const pv = (payload as any)[k] ?? null;
-      if (typeof fv === 'number' || typeof pv === 'number') {
-        const a = fv == null ? null : Number(fv);
-        const b = pv == null ? null : Number(pv);
-        if (!(a === b || (a == null && b == null))) return false;
-      } else {
-        if ((fv ?? null) !== (pv ?? null)) return false;
-      }
-    }
-    return true;
-  };
-
   const onSave = useCallback(async () => {
     // Common validation
     const missing: string[] = [];
@@ -516,6 +490,7 @@ export default function FoodEntry() {
       Alert.alert('Invalid calories', 'Calories must be a number.');
       return;
     }
+
     const servingsNum = Number(form.servings);
     if (!Number.isFinite(servingsNum) || servingsNum <= 0) {
       Alert.alert('Invalid servings', 'Servings must be a positive number.');
@@ -533,64 +508,9 @@ export default function FoodEntry() {
     try {
       const mealToUse = sanitizeMeal(form.meal);
       const dateStr = dateISO!;
-      // Build the food payload
-      const foodPayload: NewFood = {
-        name: form.name.trim(),
-        brand: form.brand.trim() || null,
-        serving_size: form.serving_size.trim() || null,
-        servings: toNumberOrZero(form.servings),
 
-        calories: cal,
-
-        total_carbs: toNumberOrZero(form.total_carbs),
-        fiber: toNumberOrZero(form.fiber),
-        sugar: toNumberOrZero(form.sugar),
-        added_sugar: toNumberOrZero(form.added_sugar),
-
-        total_fats: toNumberOrZero(form.total_fats),
-        omega_3: toNumberOrZero(form.omega_3),
-        omega_6: toNumberOrZero(form.omega_6),
-        saturated_fats: toNumberOrZero(form.saturated_fats),
-        trans_fats: toNumberOrZero(form.trans_fats),
-
-        protein: toNumberOrZero(form.protein),
-
-        vitamin_a: toNumberOrZero(form.vitamin_a),
-        vitamin_b6: toNumberOrZero(form.vitamin_b6),
-        vitamin_b12: toNumberOrZero(form.vitamin_b12),
-        vitamin_c: toNumberOrZero(form.vitamin_c),
-        vitamin_d: toNumberOrZero(form.vitamin_d),
-        vitamin_e: toNumberOrZero(form.vitamin_e),
-        vitamin_k: toNumberOrZero(form.vitamin_k),
-
-        thiamin: toNumberOrZero(form.thiamin),
-        riboflavin: toNumberOrZero(form.riboflavin),
-        niacin: toNumberOrZero(form.niacin),
-        folate: toNumberOrZero(form.folate),
-        pantothenic_acid: toNumberOrZero(form.pantothenic_acid),
-        biotin: toNumberOrZero(form.biotin),
-        choline: toNumberOrZero(form.choline),
-
-        calcium: toNumberOrZero(form.calcium),
-        chromium: toNumberOrZero(form.chromium),
-        copper: toNumberOrZero(form.copper),
-        fluoride: toNumberOrZero(form.fluoride),
-        iodine: toNumberOrZero(form.iodine),
-        iron: toNumberOrZero(form.iron),
-        magnesium: toNumberOrZero(form.magnesium),
-        manganese: toNumberOrZero(form.manganese),
-        molybdenum: toNumberOrZero(form.molybdenum),
-        phosphorus: toNumberOrZero(form.phosphorus),
-        selenium: toNumberOrZero(form.selenium),
-        zinc: toNumberOrZero(form.zinc),
-        potassium: toNumberOrZero(form.potassium),
-        sodium: toNumberOrZero(form.sodium),
-        chloride: toNumberOrZero(form.chloride),
-      };
-
+      // EDIT flow — only update the diary entry; never mutate catalog rows
       if (editItem) {
-        // UPDATE flow
-        await editFood(editItem.food_id, foodPayload as Partial<NewFood>);
         await editFoodItem(editItem.id, {
           eaten_at: dateStr,
           meal: mealToUse,
@@ -602,20 +522,77 @@ export default function FoodEntry() {
         return;
       }
 
-      // CREATE flow — avoid duplicate if unchanged from prefillFood
-      let foodIdToUse: string | null = null;
+      // CREATE flow
+      let foodIdToUse: string;
 
-      if (prefillFood && payloadEqualsFood(prefillFood, foodPayload)) {
-        // Unchanged → reuse existing food id
+      if (prefillFood) {
+        // We selected an existing catalog food → always reuse its id
         foodIdToUse = prefillFood.id;
       } else {
-        // Changed OR manualNew → create a new foods row
+        // Manual-new flow → create a canonical catalog row with single-unit servings
+        const foodPayload: NewFood = {
+          name: form.name.trim(),
+          brand: form.brand.trim() || null,
+          serving_size: form.serving_size.trim() || null,
+
+          // Catalog foods are always defined as a single unit
+          servings: 1,
+
+          calories: cal,
+
+          total_carbs: toNumberOrZero(form.total_carbs),
+          fiber: toNumberOrZero(form.fiber),
+          sugar: toNumberOrZero(form.sugar),
+          added_sugar: toNumberOrZero(form.added_sugar),
+
+          total_fats: toNumberOrZero(form.total_fats),
+          omega_3: toNumberOrZero(form.omega_3),
+          omega_6: toNumberOrZero(form.omega_6),
+          saturated_fats: toNumberOrZero(form.saturated_fats),
+          trans_fats: toNumberOrZero(form.trans_fats),
+
+          protein: toNumberOrZero(form.protein),
+
+          vitamin_a: toNumberOrZero(form.vitamin_a),
+          vitamin_b6: toNumberOrZero(form.vitamin_b6),
+          vitamin_b12: toNumberOrZero(form.vitamin_b12),
+          vitamin_c: toNumberOrZero(form.vitamin_c),
+          vitamin_d: toNumberOrZero(form.vitamin_d),
+          vitamin_e: toNumberOrZero(form.vitamin_e),
+          vitamin_k: toNumberOrZero(form.vitamin_k),
+
+          thiamin: toNumberOrZero(form.thiamin),
+          riboflavin: toNumberOrZero(form.riboflavin),
+          niacin: toNumberOrZero(form.niacin),
+          folate: toNumberOrZero(form.folate),
+          pantothenic_acid: toNumberOrZero(form.pantothenic_acid),
+          biotin: toNumberOrZero(form.biotin),
+          choline: toNumberOrZero(form.choline),
+
+          calcium: toNumberOrZero(form.calcium),
+          chromium: toNumberOrZero(form.chromium),
+          copper: toNumberOrZero(form.copper),
+          fluoride: toNumberOrZero(form.fluoride),
+          iodine: toNumberOrZero(form.iodine),
+          iron: toNumberOrZero(form.iron),
+          magnesium: toNumberOrZero(form.magnesium),
+          manganese: toNumberOrZero(form.manganese),
+          molybdenum: toNumberOrZero(form.molybdenum),
+          phosphorus: toNumberOrZero(form.phosphorus),
+          selenium: toNumberOrZero(form.selenium),
+          zinc: toNumberOrZero(form.zinc),
+          potassium: toNumberOrZero(form.potassium),
+          sodium: toNumberOrZero(form.sodium),
+          chloride: toNumberOrZero(form.chloride),
+        };
+
         const insertedFood = await addFood(foodPayload);
         foodIdToUse = insertedFood.id;
       }
 
+      // Insert the diary row with the chosen food and the user's servings
       const newFoodItem: Omit<NewFoodItem, 'user_id'> = {
-        food_id: foodIdToUse!,
+        food_id: foodIdToUse,
         eaten_at: dateStr,
         meal: mealToUse,
         servings: servingsNum,
