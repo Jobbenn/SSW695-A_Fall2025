@@ -6,7 +6,14 @@ export type OFFProduct = {
   brands?: string;
   serving_size?: string;
   image_small_url?: string;
+  image_front_small_url?: string;
   image_url?: string;
+  image_front_url?: string;
+  selected_images?: {
+    front?: {
+      display?: { [lang: string]: { small?: string; thumb?: string; } };
+    };
+  };
   nutriments?: Record<string, any>;
   countries_tags?: string[];
   languages_tags?: string[];
@@ -27,6 +34,22 @@ const DEFAULT_OPTS: SmartSearchOpts = {
   language: "en",
   requireNutrition: true,
 };
+
+function getBestImage(p: OFFProduct): string | undefined {
+  // language-specific (if available)
+  const enSmall = p.selected_images?.front?.display?.en?.small;
+  if (enSmall) return enSmall;
+
+  // general smalls
+  return (
+    p.image_front_small_url ||
+    p.image_small_url ||
+    // last-ditch larger images (use sparingly in lists)
+    p.image_front_url ||
+    p.image_url ||
+    undefined
+  );
+}
 
 function extractBrandAndQuery(raw: string) {
   // Heuristic: first word is often the brand; strip size tokens
@@ -122,15 +145,28 @@ export async function searchOpenFoodFactsSmart(rawQuery: string, opts: SmartSear
   params.set("search_terms", rest || q);
   params.set("page_size", String(pageSize));
   params.set("fields", [
-    "code","product_name","generic_name","brands","serving_size",
-    "image_small_url","image_url","nutriments",
-    "countries_tags","languages_tags","categories_tags","states_tags",
+    "code",
+    "product_name",
+    "generic_name",
+    "brands",
+    "serving_size",
+    "image_small_url",
+    "image_front_small_url",
+    "image_url",
+    "image_front_url",
+    "selected_images",
+    "nutriments",
+    "countries_tags",
+    "languages_tags",
+    "categories_tags",
+    "states_tags",
   ].join(","));
   // only set lc if defined
   if (language) params.set("lc", language);
 
   // Call the API
   const url = `https://world.openfoodfacts.org/api/v2/search?${params.toString()}`;
+  console.log("🔍 OpenFoodFacts query URL:", url);
   const res = await fetch(url, {
     headers: { "User-Agent": "HealthBud/1.0 (support@healthbud.example)" },
   });
