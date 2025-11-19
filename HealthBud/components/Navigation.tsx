@@ -12,6 +12,7 @@ import Charts from './Charts';
 import Account from './Account';
 import AddFood from './AddFood';
 import FoodEntry from './FoodEntry';
+import UPCScanner from './UPCScanner';
 import { Colors } from '../constants/theme';
 
 const Tab = createBottomTabNavigator();
@@ -89,8 +90,11 @@ export default function Navigation({ session }: Props) {
                     marginRight: 12,
                   }}
                 >
-                  {/* Barcode scan icon — larger and with slight opacity */}
-                  <Pressable accessibilityRole="button" hitSlop={10}>
+                  {/* Barcode scan icon — larger and with slight opacity 
+                      this will trigger the full screen UPCScanner "fragment" (native development lingo) or whatever Expo calls it... */}
+                  <Pressable accessibilityRole="button" 
+                             hitSlop={10}
+                             onPress={() => navigation.navigate("UPCScanner", { userId, dateISO })}>
                     <Ionicons name="barcode-outline" size={28} color={theme.text} />
                   </Pressable>
 
@@ -125,6 +129,15 @@ export default function Navigation({ session }: Props) {
             headerBackTitle: 'Back',
             headerTintColor: theme.text,
             headerStyle: { backgroundColor: theme.background },
+          }}
+        />
+
+        {/* The pop up UPC camera scanner thingy :) */}
+        <Stack.Screen
+          name="UPCScanner"
+          component={UPCScanner}
+          options={{
+            headerShown: false, // full-screen display
           }}
         />
       </Stack.Navigator>
