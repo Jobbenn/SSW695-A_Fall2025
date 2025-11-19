@@ -16,6 +16,10 @@ jobs:
   eslint:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: HealthBud
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,9 +32,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run ESLint (ignore warnings, only fail on errors)
+      - name: Run ESLint (ignore warnings)
         run: |
           npx eslint . \
             --ext .js,.jsx,.ts,.tsx \
             --max-warnings=1000000
-
