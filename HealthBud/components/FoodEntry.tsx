@@ -551,12 +551,11 @@ export default function FoodEntry() {
       return;
     }
 
-
-      if (!dateISO || !userId) {
+    if (!dateISO || !userId) {
         Alert.alert('Missing context', 'Date or User ID not provided.');
         return;
-      }  
     }
+      
     // Must have either an edit item or a picked food (we guard earlier, but keep it safe)
     const foodId = editItem?.food_id ?? prefillFood?.id;
     if (!foodId) {
