@@ -500,7 +500,6 @@ export default function Diary() {
   const { userId } = (route.params || {}) as { userId?: string };
   const [date, setDate] = useState<Date>(() => new Date());
   const [showPicker, setShowPicker] = useState(false);
-  const [tempDate, setTempDate] = useState<Date | null>(null);
   const [dayNavHeight, setDayNavHeight] = useState(0);
   const [infoOpen, setInfoOpen] = useState(false);
   const [tipsH, setTipsH] = useState(0);
@@ -537,17 +536,16 @@ export default function Diary() {
   }, [date, canGoNext]);
 
   const onDatePress = useCallback(() => {
-    setTempDate(date);
     setShowPicker(true);
   }, [date]);
 
   const onPickerChange = useCallback((e: DateTimePickerEvent, newDate?: Date) => {
     if (!newDate) return;
     // If user picks a future day in NY timezone, clamp to "today"
-    if (ymdInTZ(newDate, USER_TZ) > todayYMD) {
-      setTempDate(new Date()); // any time today; we compare by YMD later
-    } else {
-      setTempDate(newDate);
+    const clamped = ymdInTZ(newDate, USER_TZ) > todayYMD ? new Date() : newDate;
+    setDate(clamped);
+    if (Platform.OS === 'android') {
+      setShowPicker(false);
     }
   }, [todayYMD]);
 
@@ -915,7 +913,7 @@ export default function Diary() {
             >
               <View style={styles.popoverInner}>
                 <DateTimePicker
-                  value={tempDate ?? date}
+                  value={date}
                   mode="date"
                   display={Platform.select({ ios: 'inline', android: 'spinner' })}
                   onChange={onPickerChange}

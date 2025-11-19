@@ -1,0 +1,6 @@
+Original data is here: https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz
+
+psql -h aws-1-us-east-1.pooler.supabase.com -p 5432 -d postgres -U postgres.jwgxrweofqzzeefjlrph
+
+\copy public.foods(name,brand,calories,total_carbs,fiber,sugar,added_sugar,total_fats,omega_3,omega_6,saturated_fats,trans_fats,protein,vitamin_a,vitamin_b6,vitamin_b12,vitamin_c,vitamin_d,vitamin_e,vitamin_k,thiamin,riboflavin,niacin,folate,pantothenic_acid,biotin,choline,calcium,chromium,copper,fluoride,iodine,iron,magnesium,manganese,molybdenum,phosphorus,selenium,zinc,potassium,sodium,chloride,serving_size,servings) FROM 'C:/Users/Joseph/Documents/SSW695/Nutrition_Data/en.openfoodfacts.org.products_reduced.csv' WITH (FORMAT csv, HEADER true);
+

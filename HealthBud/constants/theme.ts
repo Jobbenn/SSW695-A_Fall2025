@@ -17,6 +17,9 @@ export const Colors = {
     orange: '#F6A04D',
     red: '#E85C5C',
     deep_red: '#B71C1C',
+    placeholder: '#999',
+    none: 'transparent',
+    primarySoft: 'rgba(10,132,255,0.12)', // softer tint for buttons
   },
   dark: { 
     primary: '#ffcd4e', // primary app color, accent color after login
@@ -34,5 +37,9 @@ export const Colors = {
     orange: '#F6A04D',
     red: '#E85C5C',
     deep_red: '#B71C1C',
+    placeholder: '#888',
+    none: 'transparent',
+    primarySoft: 'rgba(10,132,255,0.25)',
+    light_muted: '#222',
   },
 };
