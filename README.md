@@ -1,4 +1,4 @@
-![HealthBud Logo](assets/healthbud-logo.png)
+![HealthBud Logo](assets/HealthBud.png)
 
 # HealthBud  
 **Repository:** [Jobbenn/SSW695-A_Fall2025](https://github.com/Jobbenn/SSW695-A_Fall2025)  
