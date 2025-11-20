@@ -1,12 +1,3 @@
-Skip to content
-Chat history
-You said:
-Hel;p me generate a readme markup for my github repo: https://github.com/Jobbenn/SSW695-A_Fall2025
-ChatGPT said:
-
-Here’s a draft README.md for your repository HealthBud / SSW695‑A_Fall2025 (GitHub: Jobbenn/SSW695-A_Fall2025
-
-). You can copy it into your repo and edit as needed to match any additional details (e.g., team members, deadlines, detailed architecture diagrams, etc.).
 
 # HealthBud  
 **Repository:** [Jobbenn/SSW695-A_Fall2025](https://github.com/Jobbenn/SSW695-A_Fall2025)  
