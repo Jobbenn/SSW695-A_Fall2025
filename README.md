@@ -48,9 +48,9 @@ HealthBud is a mobile nutrition-tracking application built with React Native and
 **Backend / Database:** Supabase (PostgreSQL)  
 **APIs:** OpenFoodFacts (barcode lookup)  
 **Data ingestion tools:** psql CLI or Supabase CLI to import CSV/Parquet datasets  
-**UI overlays:** Custom camera view for barcode scanning, reticle overlay, “barcode-outline” launch button  
+**UI overlays:** Custom camera view for barcode scanning, reticle overlay, ... 
 **State management:** (e.g. Redux, Context API) — adjust if using another method  
-**Coding language:** TypeScript (as per repo stats: ~87% TypeScript) :contentReference[oaicite:2]{index=2}
+**Coding language:** TypeScript
 
 ---
 
@@ -59,8 +59,6 @@ HealthBud is a mobile nutrition-tracking application built with React Native and
 ### Prerequisites  
 - Node.js and npm/yarn  
 - Expo CLI (`npm install -g expo-cli`)  
-- A Supabase account + project  
-- (Optional) Access to OpenFoodFacts API (free)  
 - An Android/iOS device or simulator/emulator  
 
 ### Installation  
@@ -73,16 +71,6 @@ HealthBud is a mobile nutrition-tracking application built with React Native and
 
 yarn install  # or npm install  
 
-Create a .env file (or app.config.js) with your Supabase URL & anon key, and OpenFoodFacts API config:
-
-SUPABASE_URL=<your_supabase_project_url>  
-SUPABASE_ANON_KEY=<your_supabase_anon_key>  
-OPENFOODFACTS_API=<…>  
-
-Initialize database (if needed) or import bulk data:
-
-    # example import  
-    psql postgres://<user>:<pw>@<host>:<port>/<db> -f bulk_import.sql  
 
 Running the App
 
@@ -90,6 +78,7 @@ expo start
 
 Then open on an iOS/Android simulator or physical device using the Expo Go app.
 Use the barcode scanning view to test functionality.
+
 Data Model & API Integration
 
 Supabase foods table (example fields):
@@ -127,19 +116,7 @@ Folder Structure
 ├── sql/                # SQL or CLI scripts (bulk import, migrations)  
 ├── .github/            # CI/CD, workflows  
 └── README.md
-
-(Feel free to adjust to your actual layout.)
-How to Contribute
-
-This repository is organized for personal coursework, but if you want to contribute:
-
-    Fork the repo and make your changes on a feature branch.
-
-    Submit a Pull Request (PR) with a clear title and description (what you changed & why).
-
-    Ensure code follows consistent formatting (e.g., Prettier, ESLint) and tests (if present) pass.
-
-    For major changes, open
+/HealthBud  
 
 
 ChatGPT can make mistakes. Check important info.
