@@ -22,7 +22,7 @@
 ---
 
 ## Project Overview  
-HealthBud is a mobile nutrition-tracking application built with React Native and Expo, designed for the SSW 695-A Fall 2025 course. The app enables users to scan barcodes of food items, look up nutrition information (via OpenFoodFacts or other APIs), and track their daily intake with a friendly UI overlay (including a reticle view for barcode scanning). Data is stored and managed using Supabase, and large CSV/Parquet imports feed the food database table.
+HealthBud is a mobile nutrition-tracking application built with React Native and Expo, designed for the SSW 695-A Fall 2025 course. The app enables users to scan barcodes of food items, look up nutrition information (via OpenFoodFacts or other APIs), and track their daily intake. Data is stored and managed using Supabase, and large CSV/Parquet imports feed the food database table.  
 
 ---
 
@@ -105,20 +105,86 @@ API workflow:
 
 Folder Structure
 
-/HealthBud  
-├── app/                # React Native app code  
-│   ├── components/     # Reusable UI components  
-│   ├── screens/        # App screens (Home, Scan, Log, Profile)  
-│   ├── services/       # API calls, Supabase wrapper  
-│   ├── hooks/          # Custom hooks (e.g., useBarcodeScanner)  
-│   ├── assets/         # Images, icons, fonts  
-│   └── App.tsx         # Entry point  
-├── data/               # Bulk datasets for import (CSV/Parquet)  
-├── sql/                # SQL or CLI scripts (bulk import, migrations)  
-├── .github/            # CI/CD, workflows  
+<details>
+<summary><strong>Repository Structure — Branch: Goals&OFF</strong></summary>
+SSW695-A_Fall2025/
+├── .expo/
+│   ├── devices.json
+│   └── settings.json
+│
+├── .vscode/
+│   └── settings.json
+│
+├── Goals&OFF/
+│   ├── HealthBud/
+│   │   ├── app/
+│   │   │   ├── AddFood.tsx
+│   │   │   ├── FoodEntry.tsx
+│   │   │   ├── HealthBudNavigation.tsx
+│   │   │   ├── HomeScreen.tsx
+│   │   │   ├── SettingsScreen.tsx
+│   │   │   ├── openFoodFacts/
+│   │   │   │   ├── lookup.ts
+│   │   │   │   ├── nutrition.ts
+│   │   │   │   └── search.ts
+│   │   ├── assets/
+│   │   │   ├── icon.png
+│   │   │   ├── splash.png
+│   │   │   ├── logo/
+│   │   │   │   ├── healthbud-logo-black.png
+│   │   │   │   ├── healthbud-logo-white.png
+│   │   │   │   └── healthbud-logo-transparent.png
+│   │   ├── components/
+│   │   │   ├── Buttons/
+│   │   │   │   ├── AddButton.tsx
+│   │   │   │   └── ScanButton.tsx
+│   │   │   ├── Forms/
+│   │   │   │   ├── FoodForm.tsx
+│   │   │   │   ├── NutritionDisplay.tsx
+│   │   │   │   └── TextField.tsx
+│   │   │   ├── Layout/
+│   │   │   │   ├── Container.tsx
+│   │   │   │   └── Header.tsx
+│   │   │   └── Reticle/
+│   │   │       └── BarcodeReticle.tsx
+│   │   ├── sql/
+│   │   │   ├── food_import.sql
+│   │   │   └── bulk_import_parquet.sql
+│   │   ├── utils/
+│   │   │   ├── format.ts
+│   │   │   ├── psql.ts
+│   │   │   └── supabase.ts
+│   │   ├── App.tsx
+│   │   ├── README.md
+│   │   └── tsconfig.json
+│   │
+│   ├── Academic/
+│   │   ├── Goals/
+│   │   │   ├── GoalStatement.md
+│   │   │   ├── Objectives.md
+│   │   │   └── Milestones.md
+│   │   ├── OFF/
+│   │   │   ├── WeeklyReports/
+│   │   │   │   ├── Week1.md
+│   │   │   │   ├── Week2.md
+│   │   │   │   ├── Week3.md
+│   │   │   │   └── Week4.md
+│   │   │   ├── MidtermReport.md
+│   │   │   └── FinalReport.md
+│   │   └── Portfolio/
+│   │       ├── Summary.md
+│   │       └── Evidence/
+│   │           ├── Screenshots/
+│   │           │   ├── healthbud-ui-1.png
+│   │           │   ├── healthbud-ui-2.png
+│   │           │   └── healthbud-ui-3.png
+│   │           └── Diagrams/
+│   │               ├── architecture.png
+│   │               └── data-pipeline.png
+│   │
+│   └── README.md
+│
+├── .gitignore
+├── package.json
 └── README.md
-/HealthBud  
-
-
-ChatGPT can make mistakes. Check important info.
-ChatGPT is still generating a response...
+</details>
