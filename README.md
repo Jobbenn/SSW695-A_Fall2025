@@ -105,86 +105,89 @@ API workflow:
 
 Folder Structure
 
+## Repository Structure — Branch: `Goals&OFF`
+
 <details>
+<summary><strong>Click to expand folder tree</strong></summary>
 SSW695-A_Fall2025/
 ├── .expo/
-│   ├── devices.json
-│   └── settings.json
+│ ├── devices.json
+│ └── settings.json
 │
 ├── .vscode/
-│   └── settings.json
+│ └── settings.json
 │
 ├── Goals&OFF/
-│   ├── HealthBud/
-│   │   ├── app/
-│   │   │   ├── AddFood.tsx
-│   │   │   ├── FoodEntry.tsx
-│   │   │   ├── HealthBudNavigation.tsx
-│   │   │   ├── HomeScreen.tsx
-│   │   │   ├── SettingsScreen.tsx
-│   │   │   ├── openFoodFacts/
-│   │   │   │   ├── lookup.ts
-│   │   │   │   ├── nutrition.ts
-│   │   │   │   └── search.ts
-│   │   ├── assets/
-│   │   │   ├── icon.png
-│   │   │   ├── splash.png
-│   │   │   ├── logo/
-│   │   │   │   ├── healthbud-logo-black.png
-│   │   │   │   ├── healthbud-logo-white.png
-│   │   │   │   └── healthbud-logo-transparent.png
-│   │   ├── components/
-│   │   │   ├── Buttons/
-│   │   │   │   ├── AddButton.tsx
-│   │   │   │   └── ScanButton.tsx
-│   │   │   ├── Forms/
-│   │   │   │   ├── FoodForm.tsx
-│   │   │   │   ├── NutritionDisplay.tsx
-│   │   │   │   └── TextField.tsx
-│   │   │   ├── Layout/
-│   │   │   │   ├── Container.tsx
-│   │   │   │   └── Header.tsx
-│   │   │   └── Reticle/
-│   │   │       └── BarcodeReticle.tsx
-│   │   ├── sql/
-│   │   │   ├── food_import.sql
-│   │   │   └── bulk_import_parquet.sql
-│   │   ├── utils/
-│   │   │   ├── format.ts
-│   │   │   ├── psql.ts
-│   │   │   └── supabase.ts
-│   │   ├── App.tsx
-│   │   ├── README.md
-│   │   └── tsconfig.json
-│   │
-│   ├── Academic/
-│   │   ├── Goals/
-│   │   │   ├── GoalStatement.md
-│   │   │   ├── Objectives.md
-│   │   │   └── Milestones.md
-│   │   ├── OFF/
-│   │   │   ├── WeeklyReports/
-│   │   │   │   ├── Week1.md
-│   │   │   │   ├── Week2.md
-│   │   │   │   ├── Week3.md
-│   │   │   │   └── Week4.md
-│   │   │   ├── MidtermReport.md
-│   │   │   └── FinalReport.md
-│   │   └── Portfolio/
-│   │       ├── Summary.md
-│   │       └── Evidence/
-│   │           ├── Screenshots/
-│   │           │   ├── healthbud-ui-1.png
-│   │           │   ├── healthbud-ui-2.png
-│   │           │   └── healthbud-ui-3.png
-│   │           └── Diagrams/
-│   │               ├── architecture.png
-│   │               └── data-pipeline.png
-│   │
-│   └── README.md
+│ ├── HealthBud/
+│ │ ├── app/
+│ │ │ ├── AddFood.tsx
+│ │ │ ├── FoodEntry.tsx
+│ │ │ ├── HealthBudNavigation.tsx
+│ │ │ ├── HomeScreen.tsx
+│ │ │ ├── SettingsScreen.tsx
+│ │ │ ├── openFoodFacts/
+│ │ │ │ ├── lookup.ts
+│ │ │ │ ├── nutrition.ts
+│ │ │ │ └── search.ts
+│ │ ├── assets/
+│ │ │ ├── icon.png
+│ │ │ ├── splash.png
+│ │ │ ├── logo/
+│ │ │ │ ├── healthbud-logo-black.png
+│ │ │ │ ├── healthbud-logo-white.png
+│ │ │ │ └── healthbud-logo-transparent.png
+│ │ ├── components/
+│ │ │ ├── Buttons/
+│ │ │ │ ├── AddButton.tsx
+│ │ │ │ └── ScanButton.tsx
+│ │ │ ├── Forms/
+│ │ │ │ ├── FoodForm.tsx
+│ │ │ │ ├── NutritionDisplay.tsx
+│ │ │ │ └── TextField.tsx
+│ │ │ ├── Layout/
+│ │ │ │ ├── Container.tsx
+│ │ │ │ └── Header.tsx
+│ │ │ └── Reticle/
+│ │ │ └── BarcodeReticle.tsx
+│ │ ├── sql/
+│ │ │ ├── food_import.sql
+│ │ │ └── bulk_import_parquet.sql
+│ │ ├── utils/
+│ │ │ ├── format.ts
+│ │ │ ├── psql.ts
+│ │ │ └── supabase.ts
+│ │ ├── App.tsx
+│ │ ├── README.md
+│ │ └── tsconfig.json
+│ │
+│ ├── Academic/
+│ │ ├── Goals/
+│ │ │ ├── GoalStatement.md
+│ │ │ ├── Objectives.md
+│ │ │ └── Milelines.md
+│ │ ├── OFF/
+│ │ │ ├── WeeklyReports/
+│ │ │ │ ├── Week1.md
+│ │ │ │ ├── Week2.md
+│ │ │ │ ├── Week3.md
+│ │ │ │ └── Week4.md
+│ │ │ ├── MidtermReport.md
+│ │ │ └── FinalReport.md
+│ │ └── Portfolio/
+│ │ ├── Summary.md
+│ │ └── Evidence/
+│ │ ├── Screenshots/
+│ │ │ ├── healthbud-ui-1.png
+│ │ │ ├── healthbud-ui-2.png
+│ │ │ └── healthbud-ui-3.png
+│ │ └── Diagrams/
+│ │ ├── architecture.png
+│ │ └── data-pipeline.png
+│ │
+│ └── README.md
 │
 ├── .gitignore
 ├── package.json
 └── README.md
-
+<br>
 </details>
