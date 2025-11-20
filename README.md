@@ -106,7 +106,6 @@ API workflow:
 Folder Structure
 
 <details>
-<summary><strong>Repository Structure — Branch: Goals&OFF</strong></summary>
 SSW695-A_Fall2025/
 ├── .expo/
 │   ├── devices.json
@@ -187,4 +186,5 @@ SSW695-A_Fall2025/
 ├── .gitignore
 ├── package.json
 └── README.md
+
 </details>
