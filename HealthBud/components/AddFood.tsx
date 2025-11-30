@@ -82,7 +82,7 @@ export default function AddFood() {
     setLoadingAll(true);
     setErrorAll(null);
     try {
-      const rows = await getFood({ limit: 200, search: q && q.length ? q : undefined });
+      const rows = await getFood({ limit: 50, search: q && q.length ? q : undefined });
       setAll(rows);
     } catch (e: any) {
       setErrorAll(e?.message || 'Failed to load foods');
