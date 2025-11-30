@@ -6,206 +6,276 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
   useColorScheme,
+  View,
 } from 'react-native';
-import dayjs from 'dayjs';
 import SafeScreen from './SafeScreen';
 import { Colors } from '../constants/theme';
-import { supabase } from '../lib/supabase'; // adjust path if needed
+import Svg, { Polyline, Line as SvgLine } from 'react-native-svg';
+
+// TODO: adjust this import to match your project
+import { supabase } from '../lib/supabase';
 
 type TimeRange = 'week' | 'month' | 'year';
 
-type FoodNutrients = {
-  calories: number | null;
-  protein: number | null;
-  total_carbs: number | null;
-  total_fats: number | null;
-  fiber: number | null;
-  sodium: number | null;
-};
-
-type JoinedRow = {
-  eaten_at: string; // date (YYYY-MM-DD)
-  servings: number;
-  // Supabase returns foods as an array here, hence the type:
-  foods: FoodNutrients[];
-};
-
-type DayAggregate = {
-  date: string;  // YYYY-MM-DD
-  label: string; // e.g. 11/30
+type DailyRow = {
+  eaten_at: string;      // date
   calories: number;
   protein: number;
-  carbs: number;
-  fats: number;
+  total_carbs: number;
+  total_fats: number;
   fiber: number;
   sodium: number;
 };
 
-function getRangeStart(range: TimeRange): dayjs.Dayjs {
-  const now = dayjs();
+type AvgRow = {
+  avg_calories: number;
+  avg_protein: number;
+  avg_total_carbs: number;
+  avg_total_fats: number;
+  avg_fiber: number;
+  avg_sodium: number;
+};
+
+type DayPoint = {
+  label: string; // e.g. "11/30"
+  calories: number;
+  protein: number;
+  total_carbs: number;
+  total_fats: number;
+  fiber: number;
+  sodium: number;
+};
+
+type LineChartProps = {
+  data: number[];
+  height?: number;
+  color: string;
+};
+
+// Very small, custom line chart using react-native-svg
+const LineChart: React.FC<LineChartProps> = ({ data, height = 160, color }) => {
+  const [width, setWidth] = useState(0);
+
+  if (!data.length) return null;
+
+  const max = Math.max(...data);
+  const min = 0; // start at zero for nutrition-type data
+
+  const padding = 16;
+
+  const getPoints = () => {
+    if (width === 0) return '';
+
+    const n = data.length;
+    const usableWidth = width - padding * 2;
+    const usableHeight = height - padding * 2;
+    const range = max - min || 1;
+
+    return data
+      .map((value, index) => {
+        const x =
+          (n === 1 ? usableWidth / 2 : (index / (n - 1)) * usableWidth) +
+          padding;
+        const y =
+          padding + ((max - value) / range) * usableHeight; // invert so higher values are higher on chart
+        return `${x},${y}`;
+      })
+      .join(' ');
+  };
+
+  return (
+    <View
+      style={{ height }}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      {width > 0 && (
+        <Svg width="100%" height="100%">
+          {/* horizontal baseline */}
+          <SvgLine
+            x1={padding}
+            y1={height - padding}
+            x2={width - padding}
+            y2={height - padding}
+            stroke="#ccc"
+            strokeWidth={1}
+          />
+          {/* line */}
+          <Polyline
+            points={getPoints()}
+            fill="none"
+            stroke={color}
+            strokeWidth={2}
+          />
+        </Svg>
+      )}
+    </View>
+  );
+};
+
+// ----- helpers -----
+
+function getRangeDates(range: TimeRange): { start: string; end: string } {
+  const today = new Date();
+  const end = today;
+
+  const start = new Date();
   switch (range) {
     case 'week':
-      return now.subtract(6, 'day').startOf('day');   // last 7 days
+      start.setDate(end.getDate() - 6); // last 7 days incl today
+      break;
     case 'month':
-      return now.subtract(29, 'day').startOf('day');  // last 30 days
+      start.setDate(end.getDate() - 29); // last 30 days
+      break;
     case 'year':
-      return now.subtract(364, 'day').startOf('day'); // last 365 days
-    default:
-      return now.subtract(6, 'day').startOf('day');
+      start.setFullYear(end.getFullYear() - 1);
+      break;
   }
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 10); // YYYY-MM-DD
+  return { start: fmt(start), end: fmt(end) };
 }
 
-export default function History() {
-  const colorScheme = useColorScheme();
+const History: React.FC = () => {
+  const colorScheme = useColorScheme(); // "light" or "dark"
   const theme = Colors[colorScheme ?? 'light'];
 
   const [range, setRange] = useState<TimeRange>('week');
+  const [dailyPoints, setDailyPoints] = useState<DayPoint[]>([]);
+  const [averages, setAverages] = useState<AvgRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [days, setDays] = useState<DayAggregate[]>([]);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function fetchHistory() {
+    const fetchData = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const from = getRangeStart(range).format('YYYY-MM-DD');
+        // 1) Get current user
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
-        // NOTE:
-        // - We join user_food_items -> foods via the relationship.
-        // - You can add `.eq('user_id', someUserId)` later when you
-        //   wire user auth into this screen.
-        const { data, error } = await supabase
-          .from('user_food_items')
-          .select(
-            `
-              eaten_at,
-              servings,
-              foods (
-                calories,
-                protein,
-                total_carbs,
-                total_fats,
-                fiber,
-                sodium
-              )
-            `
-          )
-          .gte('eaten_at', from)
-          .order('eaten_at', { ascending: true });
-
-        if (!isMounted) return;
-
-        if (error) {
-          console.error('Error fetching history:', error);
-          setError(error.message);
-          setDays([]);
+        if (userError) {
+          console.error('Error fetching user:', userError.message);
+          if (!isMounted) return;
+          setError('Failed to get current user.');
+          setLoading(false);
           return;
         }
 
-        // 🔧 THIS IS THE LINE THAT WAS ERRORING:
-        // "convert to unknown first" → we do exactly that:
-        const rows = (data ?? []) as unknown as JoinedRow[];
-
-        // Aggregate by day
-        const agg: Record<string, DayAggregate> = {};
-
-        for (const row of rows) {
-          const dateKey = row.eaten_at; // already a date string (YYYY-MM-DD)
-          const d = dayjs(dateKey);
-
-          if (!agg[dateKey]) {
-            agg[dateKey] = {
-              date: dateKey,
-              label: d.format('MM/DD'),
-              calories: 0,
-              protein: 0,
-              carbs: 0,
-              fats: 0,
-              fiber: 0,
-              sodium: 0,
-            };
-          }
-
-          const servings = Number(row.servings ?? 1);
-          // Supabase typed this as an array in your error message
-          const foodArray = Array.isArray(row.foods)
-            ? row.foods
-            : row.foods
-            ? [row.foods]
-            : [];
-
-          for (const food of foodArray) {
-            agg[dateKey].calories += (Number(food.calories) || 0) * servings;
-            agg[dateKey].protein += (Number(food.protein) || 0) * servings;
-            agg[dateKey].carbs += (Number(food.total_carbs) || 0) * servings;
-            agg[dateKey].fats += (Number(food.total_fats) || 0) * servings;
-            agg[dateKey].fiber += (Number(food.fiber) || 0) * servings;
-            agg[dateKey].sodium += (Number(food.sodium) || 0) * servings;
-          }
+        if (!user) {
+          if (!isMounted) return;
+          setError('No logged-in user.');
+          setLoading(false);
+          return;
         }
 
-        const dayList = Object.values(agg).sort((a, b) =>
-          a.date.localeCompare(b.date)
+        const userId = user.id;
+        const { start, end } = getRangeDates(range);
+
+        // 2) Daily time-series
+        const { data: dailyData, error: dailyError } = await supabase.rpc(
+          'get_user_daily_nutrition',
+          {
+            p_user_id: userId,
+            p_start: start,
+            p_end: end,
+          }
         );
 
-        setDays(dayList);
-      } catch (e: any) {
-        if (!isMounted) return;
-        console.error('Unexpected error in fetchHistory:', e);
-        setError(e?.message ?? 'Unknown error');
-        setDays([]);
-      } finally {
-        if (isMounted) {
+        if (dailyError) {
+          console.error('get_user_daily_nutrition error:', dailyError.message);
+          if (!isMounted) return;
+          setError(dailyError.message);
           setLoading(false);
+          return;
         }
-      }
-    }
 
-    fetchHistory();
+        const rows = (dailyData ?? []) as unknown as DailyRow[];
+
+        // Map to UI-friendly points
+        const mapped: DayPoint[] = rows.map((row) => {
+          const date = new Date(row.eaten_at);
+          const label =
+            range === 'year'
+              ? date.toLocaleDateString(undefined, { month: 'short' }) // e.g. "Nov"
+              : date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }); // "11/30"
+
+          return {
+            label,
+            calories: Number(row.calories ?? 0),
+            protein: Number(row.protein ?? 0),
+            total_carbs: Number(row.total_carbs ?? 0),
+            total_fats: Number(row.total_fats ?? 0),
+            fiber: Number(row.fiber ?? 0),
+            sodium: Number(row.sodium ?? 0),
+          };
+        });
+
+        // 3) Averages
+        const { data: avgData, error: avgError } = await supabase.rpc(
+          'get_user_average_nutrition',
+          {
+            p_user_id: userId,
+            p_start: start,
+            p_end: end,
+          }
+        );
+
+        if (avgError) {
+          console.error(
+            'get_user_average_nutrition error:',
+            avgError.message
+          );
+          if (!isMounted) return;
+          setError(avgError.message);
+          setLoading(false);
+          return;
+        }
+
+        // Function returns TABLE, so Supabase gives an array; take first row
+        const avgRowArr = (avgData ?? []) as unknown as AvgRow[];
+        const avgRow = avgRowArr[0] ?? null;
+
+        if (!isMounted) return;
+        setDailyPoints(mapped);
+        setAverages(avgRow);
+      } catch (e: any) {
+        console.error('Unexpected error in History:', e);
+        if (!isMounted) return;
+        setError(e?.message ?? 'Unknown error fetching history.');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchData();
+
     return () => {
       isMounted = false;
     };
   }, [range]);
 
-  const averages = useMemo(() => {
-    if (!days.length) return null;
+  const caloriesSeries = useMemo(
+    () => dailyPoints.map((p) => p.calories),
+    [dailyPoints]
+  );
 
-    const total = days.reduce(
-      (acc, d) => {
-        acc.calories += d.calories;
-        acc.protein += d.protein;
-        acc.carbs += d.carbs;
-        acc.fats += d.fats;
-        acc.fiber += d.fiber;
-        acc.sodium += d.sodium;
-        return acc;
-      },
-      {
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fats: 0,
-        fiber: 0,
-        sodium: 0,
-      }
-    );
+  const macrosSeries = useMemo(
+    () => ({
+      protein: dailyPoints.map((p) => p.protein),
+      carbs: dailyPoints.map((p) => p.total_carbs),
+      fats: dailyPoints.map((p) => p.total_fats),
+    }),
+    [dailyPoints]
+  );
 
-    const n = days.length;
-    return {
-      calories: total.calories / n,
-      protein: total.protein / n,
-      carbs: total.carbs / n,
-      fats: total.fats / n,
-      fiber: total.fiber / n,
-      sodium: total.sodium / n,
-    };
-  }, [days]);
+  const hasData = dailyPoints.length > 0;
 
   const renderRangeChip = (label: string, value: TimeRange) => {
     const selected = range === value;
@@ -217,7 +287,7 @@ export default function History() {
           styles.chip,
           {
             borderColor: selected ? theme.primary : theme.border,
-            backgroundColor: selected ? theme.primarySoft : 'transparent',
+            backgroundColor: selected ? theme.primarySoft : theme.card,
           },
         ]}
       >
@@ -241,10 +311,14 @@ export default function History() {
           { backgroundColor: theme.background },
         ]}
       >
+        <Text style={[styles.title, { color: theme.text }]}>
+          Nutrition History
+        </Text>
+
         {/* Time range selector */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.muted }]}>
-            Time range
+            Time Range
           </Text>
           <View style={styles.chipRow}>
             {renderRangeChip('Week', 'week')}
@@ -253,139 +327,158 @@ export default function History() {
           </View>
         </View>
 
-        {/* Averages */}
+        {/* Averages card */}
         {averages && (
           <View style={[styles.card, { backgroundColor: theme.card }]}>
             <Text style={[styles.cardTitle, { color: theme.text }]}>
               Average per day
             </Text>
-            <View style={styles.rowWrap}>
-              <View style={styles.metric}>
-                <Text style={[styles.metricLabel, { color: theme.muted }]}>
+            <View style={styles.averagesRow}>
+              <View style={styles.averageItem}>
+                <Text style={[styles.averageLabel, { color: theme.muted }]}>
                   Calories
                 </Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>
-                  {averages.calories.toFixed(0)} kcal
+                <Text style={[styles.averageValue, { color: theme.text }]}>
+                  {Number(averages.avg_calories ?? 0).toFixed(0)} kcal
                 </Text>
               </View>
 
-              <View style={styles.metric}>
-                <Text style={[styles.metricLabel, { color: theme.muted }]}>
+              <View style={styles.averageItem}>
+                <Text style={[styles.averageLabel, { color: theme.muted }]}>
                   Protein
                 </Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>
-                  {averages.protein.toFixed(1)} g
+                <Text style={[styles.averageValue, { color: theme.text }]}>
+                  {Number(averages.avg_protein ?? 0).toFixed(1)} g
                 </Text>
               </View>
 
-              <View style={styles.metric}>
-                <Text style={[styles.metricLabel, { color: theme.muted }]}>
+              <View style={styles.averageItem}>
+                <Text style={[styles.averageLabel, { color: theme.muted }]}>
                   Carbs
                 </Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>
-                  {averages.carbs.toFixed(1)} g
+                <Text style={[styles.averageValue, { color: theme.text }]}>
+                  {Number(averages.avg_total_carbs ?? 0).toFixed(1)} g
                 </Text>
               </View>
 
-              <View style={styles.metric}>
-                <Text style={[styles.metricLabel, { color: theme.muted }]}>
-                  Fats
+              <View style={styles.averageItem}>
+                <Text style={[styles.averageLabel, { color: theme.muted }]}>
+                  Fat
                 </Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>
-                  {averages.fats.toFixed(1)} g
+                <Text style={[styles.averageValue, { color: theme.text }]}>
+                  {Number(averages.avg_total_fats ?? 0).toFixed(1)} g
                 </Text>
               </View>
             </View>
 
-            <View style={styles.rowWrap}>
-              <View style={styles.metric}>
-                <Text style={[styles.metricLabel, { color: theme.muted }]}>
+            <View style={styles.averagesRow}>
+              <View style={styles.averageItem}>
+                <Text style={[styles.averageLabel, { color: theme.muted }]}>
                   Fiber
                 </Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>
-                  {averages.fiber.toFixed(1)} g
+                <Text style={[styles.averageValue, { color: theme.text }]}>
+                  {Number(averages.avg_fiber ?? 0).toFixed(1)} g
                 </Text>
               </View>
 
-              <View style={styles.metric}>
-                <Text style={[styles.metricLabel, { color: theme.muted }]}>
+              <View style={styles.averageItem}>
+                <Text style={[styles.averageLabel, { color: theme.muted }]}>
                   Sodium
                 </Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>
-                  {averages.sodium.toFixed(0)} mg
+                <Text style={[styles.averageValue, { color: theme.text }]}>
+                  {Number(averages.avg_sodium ?? 0).toFixed(0)} mg
                 </Text>
               </View>
             </View>
           </View>
         )}
 
-        {/* Loading / Error / No data */}
+        {/* Loading / error / empty state */}
         {loading && (
           <View style={styles.center}>
             <ActivityIndicator />
-            <Text style={[styles.muted, { color: theme.muted }]}>
+            <Text style={[styles.mutedText, { color: theme.muted }]}>
               Loading history…
             </Text>
           </View>
         )}
 
-        {!loading && error && (
+        {error && !loading && (
           <View style={styles.center}>
-            <Text style={[styles.error, { color: 'red' }]}>{error}</Text>
+            <Text style={[styles.errorText, { color: theme.red }]}>
+              {error}
+            </Text>
           </View>
         )}
 
-        {!loading && !error && !days.length && (
+        {!loading && !error && !hasData && (
           <View style={styles.center}>
-            <Text style={[styles.muted, { color: theme.muted }]}>
+            <Text style={[styles.mutedText, { color: theme.muted }]}>
               No entries in this time range yet.
             </Text>
           </View>
         )}
 
-        {/* Per-day breakdown list (simple text for now) */}
-        {!loading && !error && days.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.muted }]}>
-              Daily totals
-            </Text>
-            {days.map((d) => (
-              <View
-                key={d.date}
-                style={[
-                  styles.dayRow,
-                  { borderBottomColor: theme.light_muted },
-                ]}
-              >
-                <Text style={[styles.dayDate, { color: theme.text }]}>
-                  {d.label}
-                </Text>
-                <Text style={[styles.dayText, { color: theme.muted }]}>
-                  {d.calories.toFixed(0)} kcal • P{' '}
-                  {d.protein.toFixed(1)} g • C {d.carbs.toFixed(1)} g • F{' '}
-                  {d.fats.toFixed(1)} g
-                </Text>
-                <Text style={[styles.dayText, { color: theme.muted }]}>
-                  Fiber {d.fiber.toFixed(1)} g • Na {d.sodium.toFixed(0)} mg
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+        {/* Charts */}
+        {!loading && !error && hasData && (
+          <>
+            {/* Calories chart */}
+            <View style={[styles.section, styles.chartSection]}>
+              <Text style={[styles.sectionTitle, { color: theme.muted }]}>
+                Daily Calories
+              </Text>
+              <LineChart
+                data={caloriesSeries}
+                color={theme.strong_green ?? theme.primary}
+              />
+            </View>
 
-        {/* TODO: When you settle on a chart library, you can add line/area
-            charts here using the `days` array as your data source. */}
+            {/* Simple macros chart: overlay 3 small lines in separate charts */}
+            <View style={[styles.section, styles.chartSection]}>
+              <Text style={[styles.sectionTitle, { color: theme.muted }]}>
+                Daily Macros
+              </Text>
+
+              <Text style={[styles.subLabel, { color: theme.muted }]}>
+                Protein
+              </Text>
+              <LineChart
+                data={macrosSeries.protein}
+                color={theme.primary}
+                height={120}
+              />
+
+              <Text style={[styles.subLabel, { color: theme.muted }]}>
+                Carbs
+              </Text>
+              <LineChart
+                data={macrosSeries.carbs}
+                color={theme.secondary}
+                height={120}
+              />
+
+              <Text style={[styles.subLabel, { color: theme.muted }]}>
+                Fats
+              </Text>
+              <LineChart
+                data={macrosSeries.fats}
+                color={theme.green ?? theme.primary}
+                height={120}
+              />
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeScreen>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 24,
+    paddingBottom: 32,
   },
   title: {
     fontSize: 24,
@@ -400,10 +493,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
+  chartSection: {
+    marginTop: 8,
+  },
   chipRow: {
     flexDirection: 'row',
     gap: 8,
-  } as any,
+  } as any, // gap supported in newer RN; cast if TS complains
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -423,44 +519,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
-  rowWrap: {
+  averagesRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
+    justifyContent: 'space-between',
+    marginTop: 4,
+    marginBottom: 4,
   },
-  metric: {
-    width: '50%',
-    paddingHorizontal: 4,
-    marginBottom: 8,
+  averageItem: {
+    flex: 1,
+    marginRight: 8,
   },
-  metricLabel: {
+  averageLabel: {
     fontSize: 12,
   },
-  metricValue: {
+  averageValue: {
     fontSize: 14,
     fontWeight: '600',
   },
   center: {
     marginTop: 24,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  muted: {
+  mutedText: {
     marginTop: 8,
     fontSize: 13,
+    textAlign: 'center',
   },
-  error: {
+  errorText: {
     fontSize: 14,
     textAlign: 'center',
   },
-  dayRow: {
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  dayDate: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  dayText: {
-    fontSize: 13,
+  subLabel: {
+    fontSize: 12,
+    marginTop: 8,
+    marginBottom: 4,
   },
 });
+
+export default History;
