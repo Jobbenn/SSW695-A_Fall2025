@@ -56,7 +56,7 @@ type ChartSeries = {
 
 const CHART_HEIGHT = 240;
 const CHART_WIDTH = 320;
-const LEFT_MARGIN = 40;
+const LEFT_MARGIN = 20;
 const TOP_PADDING = 10;
 const BOTTOM_PADDING = 22;
 
@@ -513,6 +513,7 @@ const History: React.FC = () => {
           height={CHART_HEIGHT}
           viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         >
+          
           {/* Y-axis tick lines & labels */}
           {ticks.map((val, i) => {
             const y = yForValue(val);
@@ -601,19 +602,32 @@ const History: React.FC = () => {
             </>
           )}
 
-          {/* X-axis labels */}
-          {displayLabels.map((label, i) => {
-            if (!label) return null;
-            const x =
-              LEFT_MARGIN +
-              (labels.length > 1 ? i * stepX : usableWidth / 2);
-            const y = CHART_HEIGHT - 4;
+          {/* x-axis labels (range-aware) */}
+          {labels.map((label, i) => {
+            const x = i * stepX;
+            const y = CHART_HEIGHT - 2;
+
+            // Default: show all labels (7-day)
+            let show = true;
+
+            if (timeRange === '30d') {
+              // Only show first and last
+              show = i === 0 || i === labels.length - 1;
+            }
+
+            if (timeRange === '365d') {
+              // Only show first and last
+              show = i === 0 || i === labels.length - 1;
+            }
+
+            if (!show) return null;
+
             return (
               <SvgText
                 key={i}
                 x={x}
                 y={y}
-                fontSize={9}
+                fontSize={8}
                 fill={theme.muted}
                 textAnchor="middle"
               >
