@@ -10,14 +10,7 @@ import {
   View,
 } from 'react-native';
 import dayjs from 'dayjs';
-import {
-  Svg,
-  Path,
-  Line,
-  Text as SvgText,
-  Rect,
-  Circle,
-} from 'react-native-svg';
+import { Svg, Path, Line, Text as SvgText, Rect, Circle } from 'react-native-svg';
 
 import SafeScreen from './SafeScreen';
 import { Colors } from '../constants/theme';
@@ -25,6 +18,7 @@ import { supabase } from '../lib/supabase';
 
 type TimeRange = '7d' | '30d' | '365d';
 type MetricGroup = 'calories' | 'macros' | 'micros';
+type ValueMode = 'absolute' | 'percent';
 
 type DailyRow = {
   eaten_at: string; // date
@@ -45,14 +39,35 @@ type AverageRow = {
   avg_sodium: number | string | null;
 };
 
+type MetricKey =
+  | 'calories'
+  | 'protein'
+  | 'total_carbs'
+  | 'total_fats'
+  | 'fiber'
+  | 'sodium';
+
 type ChartSeries = {
+  key: MetricKey;
   label: string;
   color: string;
   values: number[];
 };
 
-const CHART_HEIGHT = 220; // bumped a bit for more vertical resolution
-const CHART_WIDTH = 300;
+const CHART_HEIGHT = 240;
+const CHART_WIDTH = 320;
+const LEFT_MARGIN = 40;
+const TOP_PADDING = 10;
+const BOTTOM_PADDING = 22;
+
+const GOALS: Record<MetricKey, number> = {
+  calories: 2000,     // kcal
+  protein: 100,       // g
+  total_carbs: 250,   // g
+  total_fats: 70,     // g
+  fiber: 30,          // g
+  sodium: 2300,       // mg
+};
 
 function parseNum(value: number | string | null | undefined): number {
   if (value == null) return 0;
@@ -81,14 +96,13 @@ const History: React.FC = () => {
 
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [metricGroup, setMetricGroup] = useState<MetricGroup>('calories');
+  const [valueMode, setValueMode] = useState<ValueMode>('absolute');
 
   const [daily, setDaily] = useState<DailyRow[]>([]);
   const [average, setAverage] = useState<AverageRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-
-  // hover / tap index for the chart
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   // Get current user id
@@ -164,7 +178,7 @@ const History: React.FC = () => {
         if (!cancelled) {
           setDaily(dailyRows);
           setAverage(avgRow);
-          setHoverIndex(null); // reset hover on new data
+          setHoverIndex(null);
         }
       } catch (e: any) {
         console.error('History fetch error:', e);
@@ -188,12 +202,11 @@ const History: React.FC = () => {
     };
   }, [userId, timeRange]);
 
-  const chartData = useMemo(() => {
-    if (!daily.length)
-      return { labels: [] as string[], series: [] as ChartSeries[] };
+  const chartData = useMemo((): { labels: string[]; series: ChartSeries[] } => {
+    if (!daily.length) return { labels: [], series: [] };
 
     const labels = daily.map((row) =>
-      dayjs(row.eaten_at).format(timeRange === '365d' ? 'MM/DD' : 'MM/DD')
+      dayjs(row.eaten_at).format('MM/DD')
     );
 
     if (metricGroup === 'calories') {
@@ -201,6 +214,7 @@ const History: React.FC = () => {
         labels,
         series: [
           {
+            key: 'calories',
             label: 'Calories',
             color: '#ff7043',
             values: daily.map((r) => parseNum(r.calories)),
@@ -214,16 +228,19 @@ const History: React.FC = () => {
         labels,
         series: [
           {
+            key: 'protein',
             label: 'Protein',
             color: '#42a5f5',
             values: daily.map((r) => parseNum(r.protein)),
           },
           {
+            key: 'total_carbs',
             label: 'Carbs',
             color: '#66bb6a',
             values: daily.map((r) => parseNum(r.total_carbs)),
           },
           {
+            key: 'total_fats',
             label: 'Fats',
             color: '#ffa726',
             values: daily.map((r) => parseNum(r.total_fats)),
@@ -237,18 +254,20 @@ const History: React.FC = () => {
       labels,
       series: [
         {
+          key: 'fiber',
           label: 'Fiber',
           color: '#ab47bc',
           values: daily.map((r) => parseNum(r.fiber)),
         },
         {
+          key: 'sodium',
           label: 'Sodium',
           color: '#26c6da',
           values: daily.map((r) => parseNum(r.sodium)),
         },
       ],
     };
-  }, [daily, metricGroup, timeRange]);
+  }, [daily, metricGroup]);
 
   const hasData = daily.length > 0;
 
@@ -302,6 +321,21 @@ const History: React.FC = () => {
         'Micros',
         metricGroup === 'micros',
         () => setMetricGroup('micros')
+      )}
+    </View>
+  );
+
+  const renderModeChips = () => (
+    <View style={styles.row}>
+      {renderChip(
+        'Absolute',
+        valueMode === 'absolute',
+        () => setValueMode('absolute')
+      )}
+      {renderChip(
+        '% of goal',
+        valueMode === 'percent',
+        () => setValueMode('percent')
       )}
     </View>
   );
@@ -387,32 +421,61 @@ const History: React.FC = () => {
     const { labels, series } = chartData;
     if (!labels.length || !series.length) return null;
 
-    const allValues = series.flatMap((s) => s.values);
+    // transform to absolute or % of goal
+    const transformedSeries = series.map((s) => {
+      if (valueMode === 'absolute') {
+        return s;
+      }
+      const goal = GOALS[s.key];
+      const values = s.values.map((v) => {
+        if (!goal || goal <= 0) return 0;
+        return (v / goal) * 100;
+      });
+      return { ...s, values };
+    });
+
+    const allValues = transformedSeries.flatMap((s) => s.values);
     const maxY = Math.max(...allValues, 1);
     const minY = 0;
 
+    const usableWidth = CHART_WIDTH - LEFT_MARGIN;
+    const usableHeight = CHART_HEIGHT - TOP_PADDING - BOTTOM_PADDING;
     const stepX =
-      labels.length > 1 ? CHART_WIDTH / (labels.length - 1) : CHART_WIDTH;
+      labels.length > 1 ? usableWidth / (labels.length - 1) : 0;
 
-    const getY = (v: number) => {
+    const yForValue = (v: number) => {
       const norm = (v - minY) / (maxY - minY || 1);
-      // small top/bottom padding
-      return CHART_HEIGHT - norm * (CHART_HEIGHT - 20) - 10;
+      return CHART_HEIGHT - BOTTOM_PADDING - norm * usableHeight;
     };
 
-    // Build tooltip data when something is "hovered"
-    const tooltip =
-      hoverIndex != null && labels[hoverIndex]
-        ? {
-            label: labels[hoverIndex],
-            x: hoverIndex * stepX,
-            values: series.map((s) => ({
-              label: s.label,
-              color: s.color,
-              value: s.values[hoverIndex] ?? 0,
-            })),
-          }
-        : null;
+    const TICK_COUNT = 4;
+    const ticks: number[] = [];
+    for (let i = 0; i <= TICK_COUNT; i++) {
+      const val = minY + ((maxY - minY) * i) / TICK_COUNT;
+      ticks.push(val);
+    }
+
+    const formatTick = (val: number): string => {
+      if (valueMode === 'percent') {
+        return `${Math.round(val)}%`;
+      }
+      if (maxY >= 10) {
+        return Math.round(val).toString();
+      }
+      return val.toFixed(1);
+    };
+
+    // For 30d, only show first and last date label
+    const displayLabels = labels.map((label, i) => {
+      if (timeRange === '30d' && i !== 0 && i !== labels.length - 1) {
+        return '';
+      }
+      return label;
+    });
+
+    const handlePointPress = (index: number) => {
+      setHoverIndex(index);
+    };
 
     return (
       <View
@@ -422,7 +485,7 @@ const History: React.FC = () => {
         ]}
       >
         <View style={styles.legendRow}>
-          {series.map((s) => (
+          {transformedSeries.map((s) => (
             <View key={s.label} style={styles.legendItem}>
               <View
                 style={[styles.legendSwatch, { backgroundColor: s.color }]}
@@ -434,30 +497,55 @@ const History: React.FC = () => {
           ))}
         </View>
 
+        <Text
+          style={[
+            styles.modeCaption,
+            { color: theme.muted },
+          ]}
+        >
+          {valueMode === 'absolute'
+            ? 'Chart shows absolute daily totals'
+            : 'Chart shows % of daily goal'}
+        </Text>
+
         <Svg
           width="100%"
           height={CHART_HEIGHT}
           viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         >
-          {/* horizontal grid lines */}
-          {[0.25, 0.5, 0.75].map((r) => (
-            <Line
-              key={r}
-              x1={0}
-              y1={CHART_HEIGHT * r}
-              x2={CHART_WIDTH}
-              y2={CHART_HEIGHT * r}
-              stroke={theme.border}
-              strokeWidth={0.5}
-            />
-          ))}
+          {/* Y-axis tick lines & labels */}
+          {ticks.map((val, i) => {
+            const y = yForValue(val);
+            return (
+              <React.Fragment key={i}>
+                <Line
+                  x1={LEFT_MARGIN}
+                  y1={y}
+                  x2={CHART_WIDTH}
+                  y2={y}
+                  stroke={theme.border}
+                  strokeWidth={0.5}
+                />
+                <SvgText
+                  x={LEFT_MARGIN - 4}
+                  y={y + 3}
+                  fontSize={9}
+                  fill={theme.muted}
+                  textAnchor="end"
+                >
+                  {formatTick(val)}
+                </SvgText>
+              </React.Fragment>
+            );
+          })}
 
-          {/* series lines */}
-          {series.map((s) => {
+          {/* Data series */}
+          {transformedSeries.map((s) => {
             const d = s.values
               .map((v, i) => {
-                const x = i * stepX;
-                const y = getY(v);
+                const x =
+                  LEFT_MARGIN + (labels.length > 1 ? i * stepX : usableWidth / 2);
+                const y = yForValue(v);
                 return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
               })
               .join(' ');
@@ -473,103 +561,59 @@ const History: React.FC = () => {
             );
           })}
 
-          {/* hover guide + dots */}
-          {tooltip && (
+          {/* Hover vertical line & circles */}
+          {hoverIndex != null && hoverIndex >= 0 && hoverIndex < labels.length && (
             <>
-              {/* vertical guide line */}
-              <Line
-                x1={tooltip.x}
-                y1={0}
-                x2={tooltip.x}
-                y2={CHART_HEIGHT}
-                stroke={theme.muted}
-                strokeWidth={1}
-                strokeDasharray="4 2"
-              />
-
-              {/* circles at the hovered index for each series */}
-              {series.map((s) => {
-                const v = s.values[hoverIndex!];
-                const y = getY(v);
-                return (
-                  <Circle
-                    key={`${s.label}-dot`}
-                    cx={tooltip.x}
-                    cy={y}
-                    r={4}
-                    fill={s.color}
-                    stroke={theme.card}
-                    strokeWidth={1}
-                  />
-                );
-              })}
-
-              {/* tooltip box */}
               {(() => {
-                const boxWidth = 130;
-                const boxHeight =
-                  24 + tooltip.values.length * 14 + 8; // date + rows
-                const padding = 6;
-
-                // position box so it stays inside chart horizontally
-                let boxX = tooltip.x - boxWidth / 2;
-                if (boxX < 4) boxX = 4;
-                if (boxX + boxWidth > CHART_WIDTH - 4) {
-                  boxX = CHART_WIDTH - boxWidth - 4;
-                }
-                const boxY = 8;
+                const x =
+                  LEFT_MARGIN +
+                  (labels.length > 1 ? hoverIndex * stepX : usableWidth / 2);
 
                 return (
                   <>
-                    <Rect
-                      x={boxX}
-                      y={boxY}
-                      width={boxWidth}
-                      height={boxHeight}
-                      rx={6}
-                      ry={6}
-                      fill={theme.background}
-                      stroke={theme.border}
+                    <Line
+                      x1={x}
+                      y1={TOP_PADDING}
+                      x2={x}
+                      y2={CHART_HEIGHT - BOTTOM_PADDING}
+                      stroke={theme.primary}
                       strokeWidth={1}
+                      strokeDasharray="4,2"
                     />
-                    <SvgText
-                      x={boxX + padding}
-                      y={boxY + 14}
-                      fontSize={10}
-                      fill={theme.text}
-                    >
-                      {tooltip.label}
-                    </SvgText>
-
-                    {tooltip.values.map((v, idx) => (
-                      <SvgText
-                        key={v.label}
-                        x={boxX + padding}
-                        y={boxY + 24 + idx * 14}
-                        fontSize={9}
-                        fill={theme.text}
-                      >
-                        {`${v.label}: ${v.value.toFixed
-                          ? v.value.toFixed(1)
-                          : v.value}`}
-                      </SvgText>
-                    ))}
+                    {transformedSeries.map((s) => {
+                      const v = s.values[hoverIndex];
+                      const y = yForValue(v);
+                      return (
+                        <Circle
+                          key={`${s.label}-dot`}
+                          cx={x}
+                          cy={y}
+                          r={3}
+                          fill={s.color}
+                          stroke={theme.card}
+                          strokeWidth={1}
+                        />
+                      );
+                    })}
                   </>
                 );
               })()}
             </>
           )}
 
-          {/* x-axis labels */}
-          {labels.map((label, i) => {
-            const x = i * stepX;
-            const y = CHART_HEIGHT - 2;
+          {/* X-axis labels */}
+          {displayLabels.map((label, i) => {
+            if (!label) return null;
+            const x =
+              LEFT_MARGIN +
+              (labels.length > 1 ? i * stepX : usableWidth / 2);
+            const y = CHART_HEIGHT - 4;
             return (
               <SvgText
                 key={i}
                 x={x}
                 y={y}
-                fontSize={8}
+                fontSize={9}
                 fill={theme.muted}
                 textAnchor="middle"
               >
@@ -578,26 +622,97 @@ const History: React.FC = () => {
             );
           })}
 
-          {/* transparent hit zones for "hover" (tap) */}
+          {/* Touch zones for hover */}
           {labels.map((_, i) => {
-            const centerX = i * stepX;
-            const width =
-              labels.length > 1 ? CHART_WIDTH / labels.length : CHART_WIDTH;
-            const x = centerX - width / 2;
+            const cx =
+              LEFT_MARGIN +
+              (labels.length > 1 ? i * stepX : usableWidth / 2);
+            const half = labels.length > 1 ? stepX / 2 : usableWidth / 2;
+            const x =
+              i === 0 ? LEFT_MARGIN : cx - half;
+            const nextX =
+              i === labels.length - 1
+                ? LEFT_MARGIN + usableWidth
+                : cx + half;
+            const width = Math.max(nextX - x, 4);
+
             return (
               <Rect
-                key={`hit-${i}`}
+                key={`touch-${i}`}
                 x={x}
-                y={0}
+                y={TOP_PADDING}
                 width={width}
-                height={CHART_HEIGHT}
+                height={usableHeight + BOTTOM_PADDING}
                 fill="transparent"
-                onPress={() =>
-                  setHoverIndex((prev) => (prev === i ? null : i))
-                }
+                onPressIn={() => handlePointPress(i)}
               />
             );
           })}
+
+          {/* Hover tooltip box */}
+          {hoverIndex != null &&
+            hoverIndex >= 0 &&
+            hoverIndex < labels.length && (
+              (() => {
+                const rawRow = daily[hoverIndex];
+                const dateLabel = dayjs(rawRow.eaten_at).format('MMM D, YYYY');
+                const tooltipX =
+                  LEFT_MARGIN +
+                  (labels.length > 1 ? hoverIndex * stepX : usableWidth / 2);
+                const tooltipWidth = 130;
+                const tooltipHeight = 60;
+                const tooltipXClamped = Math.min(
+                  Math.max(tooltipX - tooltipWidth / 2, LEFT_MARGIN),
+                  CHART_WIDTH - tooltipWidth
+                );
+                const tooltipY = TOP_PADDING + 4;
+
+                return (
+                  <>
+                    <Rect
+                      x={tooltipXClamped}
+                      y={tooltipY}
+                      width={tooltipWidth}
+                      height={tooltipHeight}
+                      rx={6}
+                      ry={6}
+                      fill={theme.card}
+                      stroke={theme.border}
+                      strokeWidth={0.7}
+                    />
+                    <SvgText
+                      x={tooltipXClamped + 6}
+                      y={tooltipY + 14}
+                      fontSize={9}
+                      fill={theme.text}
+                    >
+                      {dateLabel}
+                    </SvgText>
+                    {transformedSeries.slice(0, 3).map((s, idx) => {
+                      const val = s.values[hoverIndex];
+                      const textY = tooltipY + 26 + idx * 12;
+                      const displayVal =
+                        valueMode === 'percent'
+                          ? `${Math.round(val)}%`
+                          : val >= 10
+                          ? Math.round(val).toString()
+                          : val.toFixed(1);
+                      return (
+                        <SvgText
+                          key={`tip-${s.label}`}
+                          x={tooltipXClamped + 6}
+                          y={textY}
+                          fontSize={9}
+                          fill={s.color}
+                        >
+                          {`${s.label}: ${displayVal}`}
+                        </SvgText>
+                      );
+                    })}
+                  </>
+                );
+              })()
+            )}
         </Svg>
       </View>
     );
@@ -629,6 +744,17 @@ const History: React.FC = () => {
           Metrics
         </Text>
         {renderMetricChips()}
+
+        {/* Value mode segmented control */}
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: theme.muted, marginTop: 16 },
+          ]}
+        >
+          Display
+        </Text>
+        {renderModeChips()}
 
         {/* Averages */}
         <View style={{ marginTop: 16 }}>{renderAveragesCard()}</View>
@@ -749,6 +875,10 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 11,
+  },
+  modeCaption: {
+    fontSize: 11,
+    marginBottom: 4,
   },
   center: {
     marginTop: 24,
