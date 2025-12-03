@@ -4,31 +4,36 @@
     "slug": "health-bud",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/HealthBud1024x1024.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/HealthBud1024x1024.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ssw695capstone.healthbud",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.healthbud"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/HealthBud48x48.png"
     },
     "plugins": [
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "275775f0-57d8-4932-a0d3-bd236ef9658c"
+      }
+    }
   }
 }

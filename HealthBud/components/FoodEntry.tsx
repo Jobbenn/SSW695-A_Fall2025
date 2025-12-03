@@ -358,7 +358,7 @@ export default function FoodEntry() {
     if (!prefill || editItem || prefillFood) return; // don't override other modes
   
     // Use the raw serving size text as display-only; the numeric macros are per 100g
-    const servingsDefault = prefillServings ?? 1;
+    const servingsDefault = 1; //prefillServings ?? 1;
   
     setForm((prev) => ({
       ...prev,
@@ -407,7 +407,7 @@ export default function FoodEntry() {
     if (!prefillFood || editItem) return; // don’t override when editing
 
     const baseDefaults = prefillFood.servings ?? 1; // Food default servings
-    const desired = prefillServings ?? baseDefaults;
+    const desired = 1; //prefillServings ?? baseDefaults;
     const factor =
       Number.isFinite(desired) && Number(desired) > 0
         ? Number(desired) / (baseDefaults || 1)

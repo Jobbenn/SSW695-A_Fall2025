@@ -8,7 +8,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColorScheme, View, Pressable } from 'react-native';
 
 import Diary from './Diary';
-import Charts from './Charts';
+import History from './History';
 import Account from './Account';
 import AddFood from './AddFood';
 import FoodEntry from './FoodEntry';
@@ -36,7 +36,7 @@ function Tabs({ session }: Props) {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'ellipse';
           if (route.name === 'Diary') iconName = focused ? 'book' : 'book-outline';
-          else if (route.name === 'Charts') iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+          else if (route.name === 'History') iconName = focused ? 'bar-chart' : 'bar-chart-outline';
           else if (route.name === 'Account') iconName = focused ? 'person-circle' : 'person-circle-outline';
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -48,7 +48,7 @@ function Tabs({ session }: Props) {
         // 👉 Make userId available to Diary (and subsequently to AddFood)
         initialParams={{ userId: session.user.id }}
       />
-      <Tab.Screen name="Charts" component={Charts} />
+      <Tab.Screen name="History" component={History} />
       <Tab.Screen name="Account" children={() => <Account session={session} />} />
     </Tab.Navigator>
   );
