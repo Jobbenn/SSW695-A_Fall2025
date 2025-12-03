@@ -59,7 +59,8 @@ HealthBud is a mobile nutrition-tracking application built with React Native and
 
 ### Prerequisites  
 - Node.js and npm/yarn  
-- Expo CLI (`npm install -g expo-cli`)  
+- Expo CLI (`npm install -g expo-cli`)
+- Expo EAS CLI ('npm install -g eas-cli')
 - An Android/iOS device or simulator/emulator  
 
 ### Installation  
@@ -79,6 +80,15 @@ expo start
 
 Then open on an iOS/Android simulator or physical device using the Expo Go app.
 Use the barcode scanning view to test functionality.
+
+Building the App using EAS CLI
+
+From your project powershell (or equivalent) command line interface, invoke the EAS
+production build (or substitute another variant for production) using this command:
+
+```bash
+eas build --profile production --platform android
+```
 
 Data Model & API Integration
 
